@@ -4,6 +4,6 @@ export default defineConfig(function (_a) {
     var mode = _a.mode;
     return ({
         plugins: [react()],
-        base: mode === 'production' ? '/loop-ledger/' : '/', // dev=/, prod=/loop-ledger/
+        base: mode === 'production' ? '/loop-ledger-v2/' : '/', // dev=/, prod=/loop-ledger-v2/
     });
 });
