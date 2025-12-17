@@ -1,70 +1,105 @@
-export type Loop = { id: string; date: string; course: string; miles?: number; notes?: string };
+// src/lib/storage.ts
 
-// Extended Expense type: optional merchant and receiptUrl for receipts.
-// Backward compatible with existing data already in localStorage.
-export type Expense = {
-  id: string;
-  date: string;
-  category: string;
-  amount: number;
-  notes?: string;
-  merchant?: string;
-  receiptUrl?: string; // data URL for MVP; can be swapped to remote URL later
-};
+// ---- Internal keys ----
+const LOOPS_KEY = "loops";
+const EXPENSES_KEY = "expenses";
 
-export type Income = { id: string; date: string; source: string; amount: number; notes?: string };
-export type Settings = { homeAddress: string; mileageRate: number; autoMileage: boolean };
+// ---- Generate new IDs ----
+export function newId() {
+  return crypto.randomUUID();
+}
 
-
-const k = {
-  loops: 'loops',
-  expenses: 'expenses',
-  income: 'income',
-  tipsOld: 'tips',
-  settings: 'settings',
-} as const;
-
-
-function read<T>(key: string, fallback: T): T {
+// ---- Get Loops ----
+export function getLoops() {
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
+    const raw = localStorage.getItem(LOOPS_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Error reading loops:", err);
+    return [];
   }
 }
 
-function write<T>(key: string, value: T) {
+// ---- Save Loops ----
+export function saveLoops(list) {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // ignore storage quota errors in MVP
+    localStorage.setItem(LOOPS_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.error("Error saving loops:", err);
   }
 }
 
-// simple id helper
-function id() {
-  return Math.random().toString(36).slice(2, 10);
+// ---- Subscribe to loop changes ----
+const loopSubscribers = new Set();
+
+export function subscribe(callback) {
+  loopSubscribers.add(callback);
+  return () => loopSubscribers.delete(callback);
 }
 
-// Provide simple CRUD helpers in one place
-export const storage = {
-  getLoops: () => read<Loop[]>(k.loops, []),
-  setLoops: (v: Loop[]) => write(k.loops, v),
+function notify() {
+  for (const cb of loopSubscribers) cb();
+}
 
-  getExpenses: () => read<Expense[]>(k.expenses, []),
-  setExpenses: (v: Expense[]) => write(k.expenses, v),
+// ---- Add Loop ----
+export function addLoop(loop) {
+  const list = getLoops();
+  list.push(loop);
+  saveLoops(list);
+  notify();
+}
 
-  getIncome: () => read<Income[]>(k.income, []),
-  setIncome: (v: Income[]) => write(k.income, v),
+// ---- Delete Loop ----
+export function deleteLoop(id) {
+  const list = getLoops().filter(x => x.id !== id);
+  saveLoops(list);
+  notify();
+}
 
-  getTips: () => read<Income[]>(k.income, []),
-  setTips: (v: Income[]) => write(k.income, v),
+// ---- Expenses ----
 
-  getSettings: () => read<Settings>(k.settings, { homeAddress: '', mileageRate: 0.67, autoMileage: false }),
-  setSettings: (v: Settings) => write(k.settings, v),
+export function getExpenses() {
+  try {
+    const raw = localStorage.getItem(EXPENSES_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Error reading expenses:", err);
+    return [];
+  }
+}
 
-  // lightweight id factory for convenience
-  newId: id,
-};
+export function saveExpenses(list) {
+  try {
+    localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
+  } catch (err) {
+    console.error("Error saving expenses:", err);
+  }
+}
+
+export function addExpense(exp) {
+  const list = getExpenses();
+  list.push(exp);
+  saveExpenses(list);
+  notify();
+}
+
+export function deleteExpense(id) {
+  const list = getExpenses().filter(x => x.id !== id);
+  saveExpenses(list);
+  notify();
+}
+
+export function getSettings(): { mileageRate: number } {
+  const data = localStorage.getItem("settings");
+  if (!data) {
+    // default settings if none exist
+    return { mileageRate: 0.67 };
+  }
+  return JSON.parse(data);
+}
+
+export function saveSettings(settings: { mileageRate: number }) {
+  localStorage.setItem("settings", JSON.stringify(settings));
+}

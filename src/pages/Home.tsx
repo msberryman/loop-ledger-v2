@@ -1,74 +1,119 @@
-import React, { useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { storage } from '../lib/storage';
-import { Card } from '../ui/card';
-import { Button } from '../ui/Button';
+import React, { useEffect, useState } from "react";
+import { getLoops, getExpenses, subscribe, getSettings } from "../lib/storage";
+import { useNavigate } from "react-router-dom";
+import "./Home.css";
 
-const fmtMoney = new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' });
-
-function toDate(s: string) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
-  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(s);
-}
-function isInCurrentMonth(d: Date) {
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-}
-function toNum(v: unknown) {
-  const n = Number(v ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-export default function Home() {
+export default function HomePage() {
   const navigate = useNavigate();
+  const [loops, setLoops] = useState([]);
+  const [expenses, setExpenses] = useState([]);
+  const [settings, setSettings] = useState(null);
 
-  const loops = storage.getLoops?.() ?? [];
-  const expenses = storage.getExpenses?.() ?? [];
+  // ---------- LOAD DATA ----------
+  useEffect(() => {
+    setLoops(getLoops());
+    setExpenses(getExpenses());
+    setSettings(getSettings());
 
-  const { totalLoops, totalCashMTD, totalExpensesMTD } = useMemo(() => {
-    const loopsMTD = loops.filter((l: any) => l.date && isInCurrentMonth(toDate(l.date)));
-    const totalLoops = loopsMTD.length;
+    // live updates
+    const unsub = subscribe(() => {
+      setLoops(getLoops());
+      setExpenses(getExpenses());
+      setSettings(getSettings());
+    });
 
-    const totalCashMTD = loopsMTD.reduce(
-      (sum: number, l: any) => sum + toNum(l.bagFee) + toNum(l.tip) + toNum(l.pregrat),
-      0
+    return unsub;
+  }, []);
+
+  // ---------- DATE FILTER ----------
+  const [filter, setFilter] = useState("30D");
+
+  const filterLoops = () => {
+    const now = new Date();
+    let rangeStart = new Date(0);
+
+    if (filter === "7D") rangeStart = new Date(now.setDate(now.getDate() - 7));
+    if (filter === "14D") rangeStart = new Date(now.setDate(now.getDate() - 14));
+    if (filter === "30D") rangeStart = new Date(now.setDate(now.getDate() - 30));
+    if (filter === "MTD") rangeStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    if (filter === "YTD") rangeStart = new Date(now.getFullYear(), 0, 1);
+    // ALL = everything
+
+    return loops.filter((loop) => {
+      const d = new Date(loop.date);
+      return d >= rangeStart;
+    });
+  };
+
+  const filteredLoops = filterLoops();
+
+  // ---------- INCOME ----------
+  const totalIncome = filteredLoops.reduce((sum, loop) => {
+    return (
+      sum +
+      (Number(loop.bagFee) || 0) +
+      (Number(loop.cashTip) || 0) +
+      (Number(loop.digitalTip) || 0) +
+      (Number(loop.preGrat) || 0)
     );
+  }, 0);
 
-    const expensesMTD = expenses.filter((e: any) => e.date && isInCurrentMonth(toDate(e.date)));
-    const totalExpensesMTD = expensesMTD.reduce((sum: number, e: any) => sum + toNum(e.amount), 0);
+  // ---------- EXPENSES (user-entered expenses ONLY) ----------
+  const filteredExpenses = expenses; // no date filter on your UI
+  const manualExpensesTotal = filteredExpenses.reduce(
+    (sum, e) => sum + (Number(e.amount) || 0),
+    0
+  );
 
-    return { totalLoops, totalCashMTD, totalExpensesMTD };
-  }, [loops, expenses]);
+  // ---------- MILEAGE EXPENSE ----------
+  const mileageRate = settings?.mileageRate || 0.655; // safe default
+  const mileageTotal = filteredLoops.reduce((sum, loop) => {
+    return sum + (Number(loop.mileage_cost) || 0);
+  }, 0);
+
+  const totalExpenses = manualExpensesTotal + mileageTotal;
 
   return (
-    <>
-      {/* Navigation CTAs */}
-      <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-        <Button onClick={() => navigate('/loops')}>Add Loop</Button>
-        <Button variant="ghost" onClick={() => navigate('/expenses?mode=add')}>Add Expense</Button>
+    <div className="home-container">
+      <div className="date-toggle">
+        {["7D", "14D", "30D", "MTD", "YTD", "ALL"].map((key) => (
+          <button
+            key={key}
+            className={filter === key ? "selected" : ""}
+            onClick={() => setFilter(key)}
+          >
+            {key}
+          </button>
+        ))}
       </div>
 
-      {/* Stats */}
-      <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 12 }}>
-        <Card>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ opacity: 0.85, marginBottom: 8 }}>Total Loops (MTD)</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{totalLoops}</div>
+      <h2 className="home-title">Loop Ledger</h2>
+
+      <div className="stats-container">
+        <div className="stat-box">
+          <div className="stat-number">{filteredLoops.length}</div>
+          <div className="stat-label">Loops Completed</div>
+        </div>
+
+        <div className="stat-box">
+          <div className="stat-number">${totalIncome.toFixed(2)}</div>
+          <div className="stat-label">Total Income</div>
+        </div>
+
+        <div className="stat-box">
+          <div className="stat-number">${totalExpenses.toFixed(2)}</div>
+          <div className="stat-label">
+            Total Expenses
+            <br />
+            <span style={{ fontSize: "0.8rem" }}>(includes mileage)</span>
           </div>
-        </Card>
-        <Card>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ opacity: 0.85, marginBottom: 8 }}>Total Cash (MTD)</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{fmtMoney.format(totalCashMTD)}</div>
-          </div>
-        </Card>
-        <Card>
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ opacity: 0.85, marginBottom: 8 }}>Total Expenses (MTD)</div>
-            <div style={{ fontSize: 28, fontWeight: 800 }}>{fmtMoney.format(totalExpensesMTD)}</div>
-          </div>
-        </Card>
+        </div>
       </div>
-    </>
+
+      <div className="home-buttons">
+        <button onClick={() => navigate("/loops")}>Add Loop</button>
+        <button onClick={() => navigate("/expenses")}>Add Expense</button>
+      </div>
+    </div>
   );
 }

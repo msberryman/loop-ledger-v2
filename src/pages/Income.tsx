@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../lib/supabase";
 
 /* ---------------- Types & helpers ---------------- */
 export type Loop = {
@@ -32,7 +33,11 @@ export type Loop = {
 };
 
 const toUSD = (n: number) =>
-  n.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  n.toLocaleString(undefined, {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
 
 const parseISO = (s?: string) => (s ? new Date(s) : new Date());
 
@@ -48,20 +53,31 @@ const num = (v: unknown): number => {
 function normalizeLoop(loop: Loop) {
   const bag = Math.max(0, num(loop.bagFee ?? loop.bag_fee));
 
-  // explicit fields first
-  let cash = Math.max(0, num(loop.tipCash ?? loop.tip_cash));
-  let digital = Math.max(0, num(loop.tipDigital ?? loop.tip_digital));
+  // explicit split fields first
+  const explicitCash = Math.max(0, num(loop.tipCash ?? loop.tip_cash));
+  const explicitDigital = Math.max(0, num(loop.tipDigital ?? loop.tip_digital));
+  const hasExplicit = explicitCash > 0 || explicitDigital > 0;
 
-  // support a single tip amount with a method/type
+  let cash = explicitCash;
+  let digital = explicitDigital;
+
+  // single tip amount (old schema)
   const singleTip = num(loop.tip ?? loop.tipAmount);
   const method = (loop.tipType ?? loop.tip_type ?? loop.tip_method ?? "")
     .toString()
     .trim()
     .toLowerCase();
-  if (singleTip > 0) {
-    if (method.startsWith("cash")) cash += singleTip;
-    else if (method.startsWith("digit")) digital += singleTip;
-    else digital += singleTip; // default to digital if unspecified
+
+  // 🔑 If we DON'T already have explicit cash/digital, derive from singleTip
+  if (!hasExplicit && singleTip > 0) {
+    if (method.startsWith("cash")) {
+      cash = singleTip;
+    } else if (method.startsWith("digit")) {
+      digital = singleTip;
+    } else {
+      // default to digital if unspecified
+      digital = singleTip;
+    }
   }
 
   // Pre-Grat
@@ -97,12 +113,21 @@ function useAllLoops(): NLoop[] {
 
 /* ---------------- Range & math ---------------- */
 type RangeKey = "mtd" | "last20" | "all";
-const LABELS: Record<RangeKey, string> = { mtd: "Month-to-Date", last20: "Last 20", all: "All" };
+const LABELS: Record<RangeKey, string> = {
+  mtd: "Month-to-Date",
+  last20: "Last 20",
+  all: "All",
+};
 
-const startOfMonth = (d = new Date()) => new Date(d.getFullYear(), d.getMonth(), 1);
+const startOfMonth = (d = new Date()) =>
+  new Date(d.getFullYear(), d.getMonth(), 1);
+
 const filterLoops = (loops: NLoop[], key: RangeKey) => {
   if (key === "all") return loops;
-  if (key === "last20") return [...loops].sort((a, b) => b.date.getTime() - a.date.getTime()).slice(0, 20);
+  if (key === "last20")
+    return [...loops]
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, 20);
   const s = startOfMonth(new Date());
   return loops.filter((l) => l.date.getTime() >= s.getTime());
 };
@@ -125,7 +150,10 @@ function summarize(loops: NLoop[]) {
 }
 
 /* ---------------- UI bits ---------------- */
-const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({ className = "", children }) => (
+const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({
+  className = "",
+  children,
+}) => (
   <div
     style={{
       borderRadius: 16,
@@ -139,30 +167,48 @@ const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({ cla
   </div>
 );
 
-const CardBody: React.FC<{ className?: string; style?: React.CSSProperties; children: React.ReactNode }> = ({
-  className = "",
-  style,
-  children,
-}) => (
+const CardBody: React.FC<{
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}> = ({ className = "", style, children }) => (
   <div style={{ padding: 16, ...style }} className={className}>
     {children}
   </div>
 );
 
-
 const COLORS = {
-  bag: "#60a5fa",     // blue-400
-  pre: "#a78bfa",     // violet-400
-  cash: "#34d399",    // emerald-400
+  bag: "#60a5fa", // blue-400
+  pre: "#a78bfa", // violet-400
+  cash: "#34d399", // emerald-400
   digital: "#fbbf24", // amber-400
   track: "rgba(120,120,120,.25)",
   textSub: "rgb(160,160,160)",
 };
 
-const Row = ({ label, value, pct, color }: { label: string; value: number; pct: string; color: string }) => (
-  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+const Row = ({
+  label,
+  value,
+  pct,
+  color,
+}: {
+  label: string;
+  value: number;
+  pct: string;
+  color: string;
+}) => (
+  <div
+    style={{
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    }}
+  >
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div style={{ width: 12, height: 12, borderRadius: 3, background: color }} />
+      <div
+        style={{ width: 12, height: 12, borderRadius: 3, background: color }}
+      />
       <span style={{ fontSize: 14 }}>{label}</span>
       <span style={{ fontSize: 14, color: COLORS.textSub }}>{pct}%</span>
     </div>
@@ -208,26 +254,92 @@ function DonutSVG({
   let offset = 0;
 
   return (
-    <div style={{ position: "relative", width: size, height: size, margin: "0 auto" }}>
+    <div
+      style={{
+        position: "relative",
+        width: size,
+        height: size,
+        margin: "0 auto",
+      }}
+    >
       <svg width={size} height={size}>
-        <circle cx={size / 2} cy={size / 2} r={r} stroke={COLORS.track} strokeWidth={stroke} fill="none" transform={rot} />
-        <circle cx={size / 2} cy={size / 2} r={r}
-          stroke={COLORS.bag} strokeWidth={stroke} fill="none"
-          strokeDasharray={`${len.bag} ${c - len.bag}`} strokeDashoffset={-offset} transform={rot} />
-        {(() => { offset += len.bag; return null; })()}
-        <circle cx={size / 2} cy={size / 2} r={r}
-          stroke={COLORS.pre} strokeWidth={stroke} fill="none"
-          strokeDasharray={`${len.pre} ${c - len.pre}`} strokeDashoffset={-offset} transform={rot} />
-        {(() => { offset += len.bag; return null; })()}
-        <circle cx={size / 2} cy={size / 2} r={r}
-          stroke={COLORS.cash} strokeWidth={stroke} fill="none"
-          strokeDasharray={`${len.cash} ${c - len.cash}`} strokeDashoffset={-offset} transform={rot} />
-        {(() => { offset += len.bag; return null; })()}
-        <circle cx={size / 2} cy={size / 2} r={r}
-          stroke={COLORS.digital} strokeWidth={stroke} fill="none"
-          strokeDasharray={`${len.dig} ${c - len.dig}`} strokeDashoffset={-offset} transform={rot} />
+        {/* Track */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={COLORS.track}
+          strokeWidth={stroke}
+          fill="none"
+          transform={rot}
+        />
+
+        {/* Bag Fees */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={COLORS.bag}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${len.bag} ${c - len.bag}`}
+          strokeDashoffset={-offset}
+          transform={rot}
+        />
+        {(() => {
+          offset += len.bag;
+          return null;
+        })()}
+
+        {/* Pre-Grat */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={COLORS.pre}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${len.pre} ${c - len.pre}`}
+          strokeDashoffset={-offset}
+          transform={rot}
+        />
+        {(() => {
+          offset += len.pre;
+          return null;
+        })()}
+
+        {/* Cash Tips */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={COLORS.cash}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${len.cash} ${c - len.cash}`}
+          strokeDashoffset={-offset}
+          transform={rot}
+        />
+        {(() => {
+          offset += len.cash;
+          return null;
+        })()}
+
+        {/* Digital Tips */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          stroke={COLORS.digital}
+          strokeWidth={stroke}
+          fill="none"
+          strokeDasharray={`${len.dig} ${c - len.dig}`}
+          strokeDashoffset={-offset}
+          transform={rot}
+        />
       </svg>
 
+      {/* Center label */}
       <div
         style={{
           position: "absolute",
@@ -254,15 +366,30 @@ export default function IncomePage() {
   const loops = useMemo(() => filterLoops(allLoops, range), [allLoops, range]);
   const sum = useMemo(() => summarize(loops), [loops]);
 
-  const pct = (n: number) => (sum.totalIncome ? ((n / sum.totalIncome) * 100).toFixed(0) : "0");
+  const pct = (n: number) =>
+    sum.totalIncome ? ((n / sum.totalIncome) * 100).toFixed(0) : "0";
 
   return (
-    <div style={{ maxWidth: 960, margin: "0 auto", padding: "16px 16px 48px", display: "grid", gap: 24 }}>
+    <div
+      style={{
+        maxWidth: 960,
+        margin: "0 auto",
+        padding: "16px 16px 48px",
+        display: "grid",
+        gap: 24,
+      }}
+    >
       {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
         <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>Income</h1>
 
-        {/* Range pills (match Loops/Expenses) */}
+        {/* Range pills */}
         <div style={{ display: "flex", gap: 12 }}>
           <div
             style={{
@@ -287,8 +414,8 @@ export default function IncomePage() {
                     fontWeight: 700,
                     border: "none",
                     cursor: "pointer",
-                    background: active ? "#3b82f6" : "transparent", // blue-500
-                    color: active ? "#ffffff" : "#cbd5e1",           // slate-300-ish
+                    background: active ? "#3b82f6" : "transparent",
+                    color: active ? "#ffffff" : "#cbd5e1",
                     transition: "background .15s ease",
                   }}
                 >
@@ -300,69 +427,202 @@ export default function IncomePage() {
         </div>
       </div>
 
-      {/* KPI grid: Total (full width), then Bag+Pre, then Cash+Digital */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 12 }}>
+      {/* KPI grid */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2,1fr)",
+          gap: 12,
+        }}
+      >
         {/* TOTAL: span full row */}
         <div style={{ gridColumn: "1 / -1" }}>
           <Card>
             <CardBody>
-              <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: COLORS.textSub }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  letterSpacing: 0.6,
+                  textTransform: "uppercase",
+                  color: COLORS.textSub,
+                }}
+              >
                 TOTAL INCOME
               </div>
-              <div style={{ marginTop: 8, fontSize: 28, fontWeight: 800 }}>{toUSD(sum.totalIncome)}</div>
-              <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textSub }}>
+              <div
+                style={{
+                  marginTop: 8,
+                  fontSize: 28,
+                  fontWeight: 800,
+                }}
+              >
+                {toUSD(sum.totalIncome)}
+              </div>
+              <div
+                style={{
+                  marginTop: 4,
+                  fontSize: 12,
+                  color: COLORS.textSub,
+                }}
+              >
                 {loops.length} loops • {LABELS[range]}
               </div>
             </CardBody>
           </Card>
         </div>
 
-        {/* ROW 2: Bag Fees | Pre-Grat */}
+        {/* Bag Fees */}
         <Card>
           <CardBody>
-            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: COLORS.textSub }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: COLORS.textSub,
+              }}
+            >
               BAG FEES
             </div>
-            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700 }}>{toUSD(sum.bag)}</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textSub }}>
-              {(sum.totalIncome ? (sum.bag / sum.totalIncome) * 100 : 0).toFixed(0)}% of total
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 24,
+                fontWeight: 700,
+              }}
+            >
+              {toUSD(sum.bag)}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: COLORS.textSub,
+              }}
+            >
+              {(
+                sum.totalIncome
+                  ? (sum.bag / sum.totalIncome) * 100
+                  : 0
+              ).toFixed(0)}
+              % of total
             </div>
           </CardBody>
         </Card>
 
+        {/* Pre-Grat */}
         <Card>
           <CardBody>
-            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: COLORS.textSub }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: COLORS.textSub,
+              }}
+            >
               PRE-GRAT
             </div>
-            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700 }}>{toUSD(sum.pregrat)}</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textSub }}>
-              {(sum.totalIncome ? (sum.pregrat / sum.totalIncome) * 100 : 0).toFixed(0)}% of total
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 24,
+                fontWeight: 700,
+              }}
+            >
+              {toUSD(sum.pregrat)}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: COLORS.textSub,
+              }}
+            >
+              {(
+                sum.totalIncome
+                  ? (sum.pregrat / sum.totalIncome) * 100
+                  : 0
+              ).toFixed(0)}
+              % of total
             </div>
           </CardBody>
         </Card>
 
-        {/* ROW 3: Cash Tips | Digital Tips */}
+        {/* Cash Tips */}
         <Card>
           <CardBody>
-            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: COLORS.textSub }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: COLORS.textSub,
+              }}
+            >
               CASH TIPS
             </div>
-            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700 }}>{toUSD(sum.cash)}</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textSub }}>
-              {(sum.totalIncome ? (sum.cash / sum.totalIncome) * 100 : 0).toFixed(0)}% of total
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 24,
+                fontWeight: 700,
+              }}
+            >
+              {toUSD(sum.cash)}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: COLORS.textSub,
+              }}
+            >
+              {(
+                sum.totalIncome
+                  ? (sum.cash / sum.totalIncome) * 100
+                  : 0
+              ).toFixed(0)}
+              % of total
             </div>
           </CardBody>
         </Card>
 
+        {/* Digital Tips */}
         <Card>
           <CardBody>
-            <div style={{ fontSize: 11, letterSpacing: 0.6, textTransform: "uppercase", color: COLORS.textSub }}>
+            <div
+              style={{
+                fontSize: 11,
+                letterSpacing: 0.6,
+                textTransform: "uppercase",
+                color: COLORS.textSub,
+              }}
+            >
               DIGITAL TIPS
             </div>
-            <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700 }}>{toUSD(sum.digital)}</div>
-            <div style={{ marginTop: 4, fontSize: 12, color: COLORS.textSub }}>
-              {(sum.totalIncome ? (sum.digital / sum.totalIncome) * 100 : 0).toFixed(0)}% of total
+            <div
+              style={{
+                marginTop: 8,
+                fontSize: 24,
+                fontWeight: 700,
+              }}
+            >
+              {toUSD(sum.digital)}
+            </div>
+            <div
+              style={{
+                marginTop: 4,
+                fontSize: 12,
+                color: COLORS.textSub,
+              }}
+            >
+              {(
+                sum.totalIncome
+                  ? (sum.digital / sum.totalIncome) * 100
+                  : 0
+              ).toFixed(0)}
+              % of total
             </div>
           </CardBody>
         </Card>
@@ -371,8 +631,21 @@ export default function IncomePage() {
       {/* Donut + Breakdown */}
       <Card>
         <CardBody>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 24, alignItems: "center" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 24 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr",
+              gap: 24,
+              alignItems: "center",
+            }}
+          >
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr",
+                gap: 24,
+              }}
+            >
               <DonutSVG
                 bag={sum.bag}
                 pregrat={sum.pregrat}
@@ -383,18 +656,60 @@ export default function IncomePage() {
               />
               <div style={{ display: "grid", gap: 12 }}>
                 <div>
-                  <div style={{ fontSize: 14, color: COLORS.textSub }}>{LABELS[range]}</div>
-                  <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{toUSD(sum.totalIncome)}</div>
-                  <div style={{ fontSize: 13, color: COLORS.textSub, marginTop: 4 }}>
-                    Avg / Loop: {toUSD(Math.round(sum.avgPerLoop || 0))}
+                  <div style={{ fontSize: 14, color: COLORS.textSub }}>
+                    {LABELS[range]}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 28,
+                      fontWeight: 700,
+                      marginTop: 4,
+                    }}
+                  >
+                    {toUSD(sum.totalIncome)}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: COLORS.textSub,
+                      marginTop: 4,
+                    }}
+                  >
+                    Avg / Loop:{" "}
+                    {toUSD(Math.round(sum.avgPerLoop || 0))}
                   </div>
                 </div>
-                <div style={{ height: 1, background: "rgba(120,120,120,.25)" }} />
+                <div
+                  style={{
+                    height: 1,
+                    background: "rgba(120,120,120,.25)",
+                  }}
+                />
                 <div style={{ display: "grid", gap: 10 }}>
-                  <Row label="Bag Fees" value={sum.bag} pct={pct(sum.bag)} color={COLORS.bag} />
-                  <Row label="Pre-Grat" value={sum.pregrat} pct={pct(sum.pregrat)} color={COLORS.pre} />
-                  <Row label="Cash Tips" value={sum.cash} pct={pct(sum.cash)} color={COLORS.cash} />
-                  <Row label="Digital Tips" value={sum.digital} pct={pct(sum.digital)} color={COLORS.digital} />
+                  <Row
+                    label="Bag Fees"
+                    value={sum.bag}
+                    pct={pct(sum.bag)}
+                    color={COLORS.bag}
+                  />
+                  <Row
+                    label="Pre-Grat"
+                    value={sum.pregrat}
+                    pct={pct(sum.pregrat)}
+                    color={COLORS.pre}
+                  />
+                  <Row
+                    label="Cash Tips"
+                    value={sum.cash}
+                    pct={pct(sum.cash)}
+                    color={COLORS.cash}
+                  />
+                  <Row
+                    label="Digital Tips"
+                    value={sum.digital}
+                    pct={pct(sum.digital)}
+                    color={COLORS.digital}
+                  />
                 </div>
               </div>
             </div>
@@ -405,8 +720,17 @@ export default function IncomePage() {
       {/* Recent Loops */}
       <Card>
         <CardBody className="no-padding">
-          <div style={{ padding: 16, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 14, fontWeight: 600 }}>Most Recent Loops</div>
+          <div
+            style={{
+              padding: 16,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <div style={{ fontSize: 14, fontWeight: 600 }}>
+              Most Recent Loops
+            </div>
             <span
               style={{
                 padding: "3px 8px",
@@ -419,7 +743,12 @@ export default function IncomePage() {
               {loops.length} shown
             </span>
           </div>
-          <div style={{ height: 1, background: "rgba(120,120,120,.25)" }} />
+          <div
+            style={{
+              height: 1,
+              background: "rgba(120,120,120,.25)",
+            }}
+          />
           <div>
             {[...loops]
               .sort((a, b) => b.date.getTime() - a.date.getTime())
@@ -435,9 +764,29 @@ export default function IncomePage() {
                     borderTop: "1px solid rgba(120,120,120,.12)",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.bag }} />
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{l.courseName ?? "Loop"}</div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 3,
+                        background: COLORS.bag,
+                      }}
+                    />
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {l.courseName ?? "Loop"}
+                    </div>
                     {l.loopType && (
                       <span
                         style={{
@@ -452,8 +801,16 @@ export default function IncomePage() {
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: 13, color: COLORS.textSub }}>
-                    {l.date.toLocaleDateString()} • {toUSD(l.bagFee + l.pregrat + l.tipCash + l.tipDigital)}
+                  <div
+                    style={{
+                      fontSize: 13,
+                      color: COLORS.textSub,
+                    }}
+                  >
+                    {l.date.toLocaleDateString()} •{" "}
+                    {toUSD(
+                      l.bagFee + l.pregrat + l.tipCash + l.tipDigital
+                    )}
                   </div>
                 </div>
               ))}
@@ -463,3 +820,4 @@ export default function IncomePage() {
     </div>
   );
 }
+

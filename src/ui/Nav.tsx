@@ -1,3 +1,4 @@
+// src/ui/Nav.tsx
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { tokens } from './tokens';
@@ -5,21 +6,30 @@ import { HomeIcon, SettingsIcon } from './Icons';
 
 type NavItem = {
   path: string;
-  label: 'Home' | 'Loops' | 'Expenses' | 'Income' | 'Settings';
-  // Provide an Icon only for items that should be icon-only
-  Icon?: React.FC<React.SVGProps<SVGSVGElement>>;
+  label: 'Home' | 'Loops' | 'Expenses' | 'Income' | 'Insights' | 'Settings';
+  Icon?: React.FC<React.SVGProps<SVGSVGElement>>; // only for Home + Settings
 };
 
+// same nav items as always
 export const NAV: readonly NavItem[] = [
   { path: '/home',     label: 'Home',     Icon: HomeIcon },   // icon-only
   { path: '/loops',    label: 'Loops' },                      // text label
   { path: '/expenses', label: 'Expenses' },                   // text label
   { path: '/income',   label: 'Income' },                     // text label
+  { path: '/insights', label: 'Insights' },                   // text label
   { path: '/settings', label: 'Settings', Icon: SettingsIcon } // icon-only
 ] as const;
 
 export const TopNav: React.FC = () => {
   const { pathname } = useLocation();
+
+  // 🚨 NEW: detect mobile
+  const isMobile = window.innerWidth < 900;
+
+  // 🚨 NEW: hide on mobile
+  if (isMobile) {
+    return null;
+  }
 
   return (
     <nav
@@ -57,10 +67,8 @@ export const TopNav: React.FC = () => {
               }}
             >
               {Icon ? (
-                // icon-only links (Home, Settings)
                 <Icon />
               ) : (
-                // text label links (Loops, Expenses, Income)
                 <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
               )}
             </Link>
@@ -70,3 +78,4 @@ export const TopNav: React.FC = () => {
     </nav>
   );
 };
+

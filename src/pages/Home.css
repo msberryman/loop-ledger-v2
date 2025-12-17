@@ -1,0 +1,146 @@
+.home-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding-top: 30px;
+}
+
+.home-title {
+  margin-top: 10px;
+  font-size: 28px;        /* increased from 22px */
+  font-weight: 650;
+  text-align: center;     /* force center */
+  width: 100%;
+  color: white;
+}
+
+.kpi-card {
+  text-align: center;            /* force label centering */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Filter buttons */
+.filter-selector {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+
+.filter-btn {
+  background: #222;
+  border: 1px solid #333;
+  border-radius: 12px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #bbb;
+}
+
+.filter-btn.active {
+  background: #0077ff;
+  border-color: #0099ff;
+  color: white;
+}
+
+/* CARD STYLES */
+.card {
+  background: #000;
+  border-radius: 14px;
+  box-shadow: 0 0 14px rgba(0, 140, 255, 0.5);
+  text-align: center;
+}
+
+/* Loops Completed card */
+.big-card {
+  width: 260px;
+  height: 95px;
+  margin-bottom: 26px;
+}
+
+/* Income & Expense card shared styles */
+.small-card {
+  width: 260px;
+  height: 95px;
+}
+
+/* Numbers */
+.card-value {
+  font-size: 28px;
+  font-weight: 550;
+  margin-bottom: 4px;
+}
+
+/* Labels */
+.card-label {
+  font-size: 14px;
+  color: #bbb;
+}
+
+.sub-label {
+  font-size: 11px;
+  color: #777;
+  margin-top: -4px;
+}
+
+/* Row of 2 cards */
+.row {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  margin-bottom: 28px;
+}
+
+/* ADD BUTTONS */
+.button-row {
+  display: flex;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.action-btn {
+  background: #111;
+  border: 1px solid #555;
+  border-radius: 12px;
+  padding: 8px 18px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.action-btn:hover {
+  background: #222;
+}
+
+/* MOBILE RESPONSIVE — KEY FIX */
+@media (max-width: 680px) {
+
+  .row {
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  .small-card,
+  .big-card {
+    width: 88vw;
+    max-width: 330px;
+  }
+
+  .button-row {
+    flex-direction: column;
+    width: 88vw;
+    max-width: 330px;
+  }
+
+  .action-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
+

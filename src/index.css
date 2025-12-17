@@ -1,4 +1,7 @@
 /* src/index.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 html, body, #root {
   height: 100%;
   margin: 0;
@@ -83,3 +86,7 @@ html, body, #root {
   .stat-value { font-size: 1.75rem; }
 }
 
+/* Ensure Google Places suggestions float above our dark UI */
+.pac-container {
+  z-index: 9999 !important;
+}
