@@ -1,0 +1,273 @@
+/* =========================
+   Loop Ledger — Loops Page
+   Single source of truth
+   (includes iOS/Safari width guardrails)
+   ========================= */
+
+/* Keep everything from overflowing due to padding/borders */
+.ll-page,
+.ll-page * {
+  box-sizing: border-box;
+}
+
+/* Page */
+.ll-page {
+  padding: 16px 16px 32px; /* tightened top + bottom */
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+/* Titles */
+.ll-title {
+  text-align: center;
+  font-size: 26px;
+  font-weight: 700;
+  margin: 6px 0 12px; /* tightened dead space */
+}
+
+.ll-sectionTitle {
+  text-align: center;
+  font-size: 22px;
+  font-weight: 700;
+  margin: 22px 0 12px;
+}
+
+/* Card */
+.ll-card {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 16px;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Form layout */
+.ll-form {
+  display: block;
+  width: 100%;
+}
+
+/* Inner panel that holds fields */
+.ll-panel {
+  display: grid;
+  gap: 14px;
+  width: 100%;
+  min-width: 0; /* IMPORTANT: allow children to shrink (iOS/Safari) */
+}
+
+.ll-stack {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  min-width: 0; /* IMPORTANT (iOS/Safari) */
+}
+
+.ll-field {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0; /* IMPORTANT (iOS/Safari) */
+}
+
+.ll-label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Inputs */
+.ll-input,
+.ll-select {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0; /* IMPORTANT: prevent intrinsic overflow in grid items */
+
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+
+  padding: 10px 12px;
+  color: rgba(255, 255, 255, 0.92);
+  outline: none;
+}
+
+.ll-input::placeholder {
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.ll-input:focus,
+.ll-select:focus {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+/* === iOS / Safari GUARDRAILS ===
+   Native date/time inputs can overflow because Safari applies intrinsic min widths.
+   Force them to respect container width. */
+.ll-input[type="date"],
+.ll-input[type="time"] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  /* Safari uses inline-size under the hood */
+  max-inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/* Grids */
+.ll-gridMoney {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.ll-gridMoney > * {
+  min-width: 0; /* IMPORTANT for iOS/Safari */
+}
+
+.ll-gridTime {
+  display: grid;
+  width: 100%;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.ll-gridTime > * {
+  min-width: 0; /* IMPORTANT for iOS/Safari */
+}
+
+/* Money tiles */
+.ll-moneyTile {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 12px;
+  padding: 10px 10px 8px;
+  min-width: 0;
+}
+
+.ll-moneyRow {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.ll-moneySymbol {
+  opacity: 0.7;
+}
+
+.ll-moneyInput {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.92);
+  outline: none;
+  padding: 8px 0;
+}
+
+/* Buttons */
+.ll-btn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.92);
+  border-radius: 12px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.ll-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ll-btnPrimary {
+  width: 100%;
+  padding: 12px 12px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.ll-btnGhost {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.ll-btnDanger {
+  border-color: rgba(255, 80, 80, 0.35);
+  background: rgba(255, 80, 80, 0.10);
+}
+
+/* Past loops list */
+.ll-list {
+  display: grid;
+  gap: 12px;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.ll-loopCardHeader {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.ll-loopTitle {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.ll-loopMeta {
+  opacity: 0.85;
+  line-height: 1.35;
+}
+
+.ll-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+/* Responsive */
+@media (max-width: 720px) {
+  .ll-page {
+    padding: 12px 14px 28px; /* slightly tighter on mobile */
+  }
+
+  .ll-title {
+    margin: 4px 0 10px;
+    font-size: 24px;
+  }
+
+  .ll-card {
+    padding: 14px;
+  }
+
+  .ll-gridMoney {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ll-gridTime {
+    grid-template-columns: 1fr;
+  }
+
+  .ll-loopCardHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ll-actions {
+    justify-content: flex-start;
+  }
+}
+

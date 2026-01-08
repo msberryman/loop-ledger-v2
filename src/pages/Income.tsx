@@ -1,109 +1,117 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { supabase } from "../lib/supabase";
+import "./Income.css";
+import { supabase } from "../supabaseClient"; // kept for parity with existing imports
 
-/* ---------------- Types & helpers ---------------- */
-export type Loop = {
-  id: string;
-  date: string; // ISO
+/* ---------------- Types ---------------- */
+type Loop = {
+  date: string;
+  bagFee: number | string;
+  pregrat: number | string;
 
-  // bag fee (various keys we've seen)
-  bagFee?: number | string;
-  bag_fee?: number | string;
+  // Newer versions store tips as cashTip/digitalTip
+  cashTip?: number | string;
+  digitalTip?: number | string;
 
-  // tips (separate fields)
+  // Older versions stored tips as tipCash/tipDigital
   tipCash?: number | string;
-  tip_cash?: number | string;
   tipDigital?: number | string;
-  tip_digital?: number | string;
-
-  // tips (single amount + method/type)
-  tip?: number | string;
-  tipAmount?: number | string;
-  tipType?: string;      // "Cash" | "Digital"
-  tip_type?: string;     // "cash" | "digital"
-  tip_method?: string;   // "cash" | "digital"
-
-  // pre-grat variations
-  preGrat?: number | string;
-  pre_grat?: number | string;
-  pregrat?: number | string;
 
   courseName?: string;
-  loopType?: "single" | "double" | "forecaddie" | string;
+  loopType?: string;
 };
 
-const toUSD = (n: number) =>
-  n.toLocaleString(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
+/* ---------------- Helpers ---------------- */
+function num(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string") {
+    const cleaned = v.replace(/[^0-9.\-]/g, "");
+    const n = Number(cleaned);
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
 
-const parseISO = (s?: string) => (s ? new Date(s) : new Date());
+// Safari/iOS can be picky about Date parsing for non-ISO strings.
+// We normalize the common formats we store: YYYY-MM-DD and MM/DD/YYYY.
+function parseLoopDate(dateStr: string): Date | null {
+  if (!dateStr || typeof dateStr !== "string") return null;
 
-/** Robust numeric parser – handles "$64", "64.00", 64, etc. */
-const num = (v: unknown): number => {
-  if (v == null) return 0;
-  if (typeof v === "number") return isFinite(v) ? v : 0;
-  const cleaned = String(v).replace(/[^0-9.\-]/g, "");
-  const n = Number(cleaned);
-  return isFinite(n) ? n : 0;
-};
-
-function normalizeLoop(loop: Loop) {
-  const bag = Math.max(0, num(loop.bagFee ?? loop.bag_fee));
-
-  // explicit split fields first
-  const explicitCash = Math.max(0, num(loop.tipCash ?? loop.tip_cash));
-  const explicitDigital = Math.max(0, num(loop.tipDigital ?? loop.tip_digital));
-  const hasExplicit = explicitCash > 0 || explicitDigital > 0;
-
-  let cash = explicitCash;
-  let digital = explicitDigital;
-
-  // single tip amount (old schema)
-  const singleTip = num(loop.tip ?? loop.tipAmount);
-  const method = (loop.tipType ?? loop.tip_type ?? loop.tip_method ?? "")
-    .toString()
-    .trim()
-    .toLowerCase();
-
-  // 🔑 If we DON'T already have explicit cash/digital, derive from singleTip
-  if (!hasExplicit && singleTip > 0) {
-    if (method.startsWith("cash")) {
-      cash = singleTip;
-    } else if (method.startsWith("digit")) {
-      digital = singleTip;
-    } else {
-      // default to digital if unspecified
-      digital = singleTip;
-    }
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const d = new Date(`${dateStr}T00:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
-  // Pre-Grat
-  const pregrat = Math.max(0, num(loop.preGrat ?? loop.pre_grat ?? loop.pregrat));
+  // MM/DD/YYYY
+  const mdy = dateStr.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) {
+    const m = Number(mdy[1]);
+    const d = Number(mdy[2]);
+    const y = Number(mdy[3]);
+    const dt = new Date(y, m - 1, d);
+    return Number.isNaN(dt.getTime()) ? null : dt;
+  }
+
+  // Fallback
+  const dt = new Date(dateStr);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatCurrency(n: number): string {
+  return n.toLocaleString(undefined, { style: "currency", currency: "USD" });
+}
+
+/* ---------------- Normalization ---------------- */
+function normalizeLoop(loop: Partial<Loop> & Record<string, any>) {
+  // Date (support a few potential keys from earlier versions)
+  const date =
+    (typeof loop.date === "string" && loop.date) ||
+    (typeof loop.loopDate === "string" && loop.loopDate) ||
+    (typeof loop.loop_date === "string" && loop.loop_date) ||
+    "";
+
+  // Income fields (support multiple historical key names)
+  const bagFee = num(loop.bagFee ?? loop.bag_fee ?? loop.bagfee ?? loop.bag ?? 0);
+  const pregrat = num(loop.pregrat ?? loop.preGrat ?? loop.pre_grat ?? loop.pregrat_amount ?? 0);
+
+  // Tips: newest schema uses cashTip/digitalTip; older schema used tipCash/tipDigital
+  const cash = num(
+    loop.cashTip ??
+      loop.cash_tip ??
+      loop.tipCash ??
+      loop.tip_cash ??
+      loop.cash ??
+      0
+  );
+  const digital = num(
+    loop.digitalTip ??
+      loop.digital_tip ??
+      loop.tipDigital ??
+      loop.tip_digital ??
+      loop.digital ??
+      0
+  );
 
   return {
-    id: String(loop.id),
-    date: parseISO(loop.date),
-    bagFee: bag,
+    date,
+    bagFee,
     pregrat,
     tipCash: cash,
     tipDigital: digital,
-    courseName: loop.courseName ?? undefined,
-    loopType: loop.loopType ?? undefined,
+    courseName: typeof loop.courseName === "string" ? loop.courseName : undefined,
+    loopType: typeof loop.loopType === "string" ? loop.loopType : undefined,
   };
 }
-
-/* --------------- Data source --------------- */
 type NLoop = ReturnType<typeof normalizeLoop>;
+
+/* ---------------- Data source ---------------- */
 function useAllLoops(): NLoop[] {
   const [loops, setLoops] = useState<NLoop[]>([]);
   useEffect(() => {
     try {
       const raw = localStorage.getItem("loops");
       const parsed = raw ? (JSON.parse(raw) as any[]) : [];
-      setLoops(parsed.map((l) => normalizeLoop(l as Loop)));
+      setLoops(parsed.map((l) => normalizeLoop(l)));
     } catch {
       setLoops([]);
     }
@@ -112,249 +120,157 @@ function useAllLoops(): NLoop[] {
 }
 
 /* ---------------- Range & math ---------------- */
-type RangeKey = "mtd" | "last20" | "all";
+type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
 const LABELS: Record<RangeKey, string> = {
-  mtd: "Month-to-Date",
-  last20: "Last 20",
-  all: "All",
+  "7d": "7D",
+  "14d": "14D",
+  "30d": "30D",
+  mtd: "MTD",
+  ytd: "YTD",
+  all: "ALL",
 };
 
-const startOfMonth = (d = new Date()) =>
-  new Date(d.getFullYear(), d.getMonth(), 1);
+const RANGE_KEYS: RangeKey[] = ["7d", "14d", "30d", "mtd", "ytd", "all"];
 
-const filterLoops = (loops: NLoop[], key: RangeKey) => {
-  if (key === "all") return loops;
-  if (key === "last20")
-    return [...loops]
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, 20);
-  const s = startOfMonth(new Date());
-  return loops.filter((l) => l.date.getTime() >= s.getTime());
-};
-
-function summarize(loops: NLoop[]) {
-  const t = loops.reduce(
-    (acc, l) => {
-      acc.bag += l.bagFee;
-      acc.pregrat += l.pregrat;
-      acc.cash += l.tipCash;
-      acc.digital += l.tipDigital;
-      acc.count++;
-      return acc;
-    },
-    { bag: 0, pregrat: 0, cash: 0, digital: 0, count: 0 }
-  );
-  const totalIncome = t.bag + t.pregrat + t.cash + t.digital;
-  const avgPerLoop = t.count ? totalIncome / t.count : 0;
-  return { ...t, totalIncome, avgPerLoop };
+function startOfDay(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
 }
 
-/* ---------------- UI bits ---------------- */
-const Card: React.FC<{ className?: string; children: React.ReactNode }> = ({
-  className = "",
-  children,
-}) => (
-  <div
-    style={{
-      borderRadius: 16,
-      border: "1px solid rgba(120,120,120,.25)",
-      overflow: "hidden",
-      background: "transparent",
-    }}
-    className={className}
-  >
-    {children}
-  </div>
-);
+function rangeStart(range: RangeKey, now = new Date()): Date | null {
+  const today = startOfDay(now);
 
-const CardBody: React.FC<{
-  className?: string;
-  style?: React.CSSProperties;
-  children: React.ReactNode;
-}> = ({ className = "", style, children }) => (
-  <div style={{ padding: 16, ...style }} className={className}>
-    {children}
-  </div>
-);
+  if (range === "all") return null;
+  if (range === "mtd") return new Date(today.getFullYear(), today.getMonth(), 1);
+  if (range === "ytd") return new Date(today.getFullYear(), 0, 1);
 
+  const days = range === "7d" ? 6 : range === "14d" ? 13 : 29; // "30d"
+  const start = new Date(today);
+  start.setDate(today.getDate() - days);
+  return start;
+}
+
+function filterLoopsByRange(all: NLoop[], range: RangeKey): NLoop[] {
+  const start = rangeStart(range);
+  if (!start) return all;
+
+  return all.filter((l) => {
+    const dt = parseLoopDate(l.date);
+    return dt ? dt >= start : false;
+  });
+}
+
+function summarize(loops: NLoop[]) {
+  const bag = loops.reduce((acc, l) => acc + l.bagFee, 0);
+  const pre = loops.reduce((acc, l) => acc + l.pregrat, 0);
+  const cash = loops.reduce((acc, l) => acc + l.tipCash, 0);
+  const digital = loops.reduce((acc, l) => acc + l.tipDigital, 0);
+  const total = bag + pre + cash + digital;
+  return { bag, pre, cash, digital, total };
+}
+
+function pct(part: number, whole: number): string {
+  if (whole <= 0) return "0%";
+  const p = Math.round((part / whole) * 100);
+  return `${p}%`;
+}
+
+/* ---------------- Colors (UI only) ---------------- */
 const COLORS = {
-  bag: "#60a5fa", // blue-400
-  pre: "#a78bfa", // violet-400
-  cash: "#34d399", // emerald-400
-  digital: "#fbbf24", // amber-400
-  track: "rgba(120,120,120,.25)",
-  textSub: "rgb(160,160,160)",
-};
+  bag: "#F59E0B",     // amber
+  pre: "#A855F7",     // violet
+  cash: "#22C55E",    // green (dominant)
+  digital: "#38BDF8", // cyan
+} as const;
 
-const Row = ({
-  label,
-  value,
-  pct,
-  color,
-}: {
-  label: string;
-  value: number;
-  pct: string;
-  color: string;
-}) => (
-  <div
-    style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-    }}
-  >
-    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-      <div
-        style={{ width: 12, height: 12, borderRadius: 3, background: color }}
-      />
-      <span style={{ fontSize: 14 }}>{label}</span>
-      <span style={{ fontSize: 14, color: COLORS.textSub }}>{pct}%</span>
-    </div>
-    <div style={{ fontWeight: 600 }}>{toUSD(value)}</div>
-  </div>
-);
-
-/* ---------------- Pure SVG Donut (4 segments) ---------------- */
+/* ---------------- Donut ---------------- */
 function DonutSVG({
   bag,
-  pregrat,
+  pre,
   cash,
   digital,
-  total,
-  label,
+  size = 280,
+  stroke = 22,
 }: {
   bag: number;
-  pregrat: number;
+  pre: number;
   cash: number;
   digital: number;
-  total: number;
-  label: string;
+  size?: number;
+  stroke?: number;
 }) {
-  const size = 260;
-  const stroke = 28;
+  const total = bag + pre + cash + digital;
+
+  const segments = [
+    { label: "Bag Fees", value: bag, color: COLORS.bag },
+    { label: "Pre-Grat", value: pre, color: COLORS.pre },
+    { label: "Cash Tips", value: cash, color: COLORS.cash },
+    { label: "Digital Tips", value: digital, color: COLORS.digital },
+  ];
+
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
 
-  const p = {
-    bag: total ? bag / total : 0,
-    pre: total ? pregrat / total : 0,
-    cash: total ? cash / total : 0,
-    dig: total ? digital / total : 0,
-  };
-  const len = {
-    bag: c * p.bag,
-    pre: c * p.pre,
-    cash: c * p.cash,
-    dig: c * p.dig,
-  };
-
-  const rot = `rotate(-90 ${size / 2} ${size / 2})`;
   let offset = 0;
-
   return (
-    <div
-      style={{
-        position: "relative",
-        width: size,
-        height: size,
-        margin: "0 auto",
-      }}
-    >
-      <svg width={size} height={size}>
-        {/* Track */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={COLORS.track}
-          strokeWidth={stroke}
-          fill="none"
-          transform={rot}
-        />
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {/* Track */}
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        stroke="rgba(255,255,255,0.08)"
+        strokeWidth={stroke}
+      />
 
-        {/* Bag Fees */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={COLORS.bag}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={`${len.bag} ${c - len.bag}`}
-          strokeDashoffset={-offset}
-          transform={rot}
-        />
-        {(() => {
-          offset += len.bag;
-          return null;
-        })()}
+      {/* Segments */}
+      {segments.map((s) => {
+        const share = total > 0 ? s.value / total : 0;
+        const len = share * c;
 
-        {/* Pre-Grat */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={COLORS.pre}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={`${len.pre} ${c - len.pre}`}
-          strokeDashoffset={-offset}
-          transform={rot}
-        />
-        {(() => {
-          offset += len.pre;
-          return null;
-        })()}
+        const node = (
+          <circle
+            key={s.label}
+            cx={size / 2}
+            cy={size / 2}
+            r={r}
+            fill="none"
+            stroke={s.color}
+            strokeWidth={stroke}
+            strokeLinecap="butt"
+            strokeDasharray={`${len} ${c - len}`}
+            strokeDashoffset={-offset}
+            transform={`rotate(-90 ${size / 2} ${size / 2})`}
+          />
+        );
 
-        {/* Cash Tips */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={COLORS.cash}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={`${len.cash} ${c - len.cash}`}
-          strokeDashoffset={-offset}
-          transform={rot}
-        />
-        {(() => {
-          offset += len.cash;
-          return null;
-        })()}
-
-        {/* Digital Tips */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
-          stroke={COLORS.digital}
-          strokeWidth={stroke}
-          fill="none"
-          strokeDasharray={`${len.dig} ${c - len.dig}`}
-          strokeDashoffset={-offset}
-          transform={rot}
-        />
-      </svg>
+        offset += len;
+        return node;
+      })}
 
       {/* Center label */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-          justifyContent: "center",
-          textAlign: "center",
-        }}
+      <text
+        x="50%"
+        y="50%"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="white"
+        fontSize="22"
+        fontWeight="700"
       >
-        <div style={{ fontSize: 18, fontWeight: 800 }}>{toUSD(total)}</div>
-        <div style={{ fontSize: 12, color: COLORS.textSub }}>{label}</div>
-      </div>
-    </div>
+        {formatCurrency(total)}
+      </text>
+      <text
+        x="50%"
+        y="58%"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        fill="rgba(255,255,255,0.65)"
+        fontSize="12"
+      >
+        Total
+      </text>
+    </svg>
   );
 }
 
@@ -363,461 +279,129 @@ export default function IncomePage() {
   const allLoops = useAllLoops();
   const [range, setRange] = useState<RangeKey>("mtd");
 
-  const loops = useMemo(() => filterLoops(allLoops, range), [allLoops, range]);
+  const loops = useMemo(() => filterLoopsByRange(allLoops, range), [allLoops, range]);
   const sum = useMemo(() => summarize(loops), [loops]);
 
-  const pct = (n: number) =>
-    sum.totalIncome ? ((n / sum.totalIncome) * 100).toFixed(0) : "0";
+  const recentIncome = useMemo(() => {
+    const toTime = (d: string) => parseLoopDate(d)?.getTime() ?? 0;
+
+    return [...loops]
+      .sort((a, b) => toTime(b.date) - toTime(a.date))
+      .slice(0, 8)
+      .map((l) => ({
+        date: l.date,
+        total: l.bagFee + l.pregrat + l.tipCash + l.tipDigital,
+      }));
+  }, [loops]);
+
+  const cardStyle: React.CSSProperties = {
+    width: "min(720px, calc(100% - 32px))",
+    margin: "0 auto",
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 16,
+    padding: 18,
+    background: "rgba(0,0,0,0.25)",
+    boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
+  };
 
   return (
-    <div
-      style={{
-        maxWidth: 960,
-        margin: "0 auto",
-        padding: "16px 16px 48px",
-        display: "grid",
-        gap: 24,
-      }}
-    >
-      {/* Header */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <h1 style={{ fontSize: 32, fontWeight: 700, margin: 0 }}>Income</h1>
+    <div style={{ padding: "18px 16px 28px", color: "white" }}>
+      {/* Header + Filters (styled via Income.css) */}
+      <div className="income-header">
+        <h1 className="income-title">Income</h1>
 
-        {/* Range pills */}
-        <div style={{ display: "flex", gap: 12 }}>
-          <div
-            style={{
-              display: "inline-flex",
-              gap: 6,
-              padding: 4,
-              borderRadius: 999,
-              border: "1px solid rgba(120,120,120,.35)",
-              background: "rgba(120,120,120,.12)",
-            }}
-          >
-            {(["mtd", "last20", "all"] as RangeKey[]).map((k) => {
-              const active = range === k;
-              return (
-                <button
-                  key={k}
-                  onClick={() => setRange(k)}
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 999,
-                    fontSize: 14,
-                    fontWeight: 700,
-                    border: "none",
-                    cursor: "pointer",
-                    background: active ? "#3b82f6" : "transparent",
-                    color: active ? "#ffffff" : "#cbd5e1",
-                    transition: "background .15s ease",
-                  }}
-                >
-                  {k === "mtd" ? "MTD" : k === "last20" ? "Last 20" : "All"}
-                </button>
-              );
-            })}
-          </div>
+        <div className="income-filters" role="tablist" aria-label="Income range filter">
+          {RANGE_KEYS.map((k) => (
+            <button
+              key={k}
+              type="button"
+              className={`income-filter-pill ${range === k ? "active" : ""}`}
+              onClick={() => setRange(k)}
+            >
+              {LABELS[k]}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* KPI grid */}
+      {/* Total Income */}
+      <div style={{ ...cardStyle, marginTop: 14 }}>
+        <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>TOTAL INCOME</div>
+        <div style={{ fontSize: 32, fontWeight: 800, marginTop: 6 }}>{formatCurrency(sum.total)}</div>
+        <div style={{ opacity: 0.7, marginTop: 6 }}>{loops.length} loops</div>
+      </div>
+
+      {/* Breakdown cards */}
       <div
         style={{
+          width: "min(720px, calc(100% - 32px))",
+          margin: "14px auto 0",
           display: "grid",
-          gridTemplateColumns: "repeat(2,1fr)",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: 12,
         }}
       >
-        {/* TOTAL: span full row */}
-        <div style={{ gridColumn: "1 / -1" }}>
-          <Card>
-            <CardBody>
-              <div
-                style={{
-                  fontSize: 11,
-                  letterSpacing: 0.6,
-                  textTransform: "uppercase",
-                  color: COLORS.textSub,
-                }}
-              >
-                TOTAL INCOME
-              </div>
-              <div
-                style={{
-                  marginTop: 8,
-                  fontSize: 28,
-                  fontWeight: 800,
-                }}
-              >
-                {toUSD(sum.totalIncome)}
-              </div>
-              <div
-                style={{
-                  marginTop: 4,
-                  fontSize: 12,
-                  color: COLORS.textSub,
-                }}
-              >
-                {loops.length} loops • {LABELS[range]}
-              </div>
-            </CardBody>
-          </Card>
-        </div>
+        {[
+          { title: "BAG FEES", value: sum.bag, color: COLORS.bag },
+          { title: "PRE-GRAT", value: sum.pre, color: COLORS.pre },
+          { title: "CASH TIPS", value: sum.cash, color: COLORS.cash },
+          { title: "DIGITAL TIPS", value: sum.digital, color: COLORS.digital },
+        ].map((m) => (
+          <div
+            key={m.title}
+            style={{
+              border: "1px solid rgba(255,255,255,0.12)",
+              borderRadius: 14,
+              padding: 14,
+              background: "rgba(0,0,0,0.18)",
+            }}
+          >
+            <div className="income-metric-title">
+              <span>{m.title}</span>
+              <span className="income-color-dot" style={{ backgroundColor: m.color }} />
+            </div>
 
-        {/* Bag Fees */}
-        <Card>
-          <CardBody>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: COLORS.textSub,
-              }}
-            >
-              BAG FEES
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 24,
-                fontWeight: 700,
-              }}
-            >
-              {toUSD(sum.bag)}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: COLORS.textSub,
-              }}
-            >
-              {(
-                sum.totalIncome
-                  ? (sum.bag / sum.totalIncome) * 100
-                  : 0
-              ).toFixed(0)}
-              % of total
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Pre-Grat */}
-        <Card>
-          <CardBody>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: COLORS.textSub,
-              }}
-            >
-              PRE-GRAT
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 24,
-                fontWeight: 700,
-              }}
-            >
-              {toUSD(sum.pregrat)}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: COLORS.textSub,
-              }}
-            >
-              {(
-                sum.totalIncome
-                  ? (sum.pregrat / sum.totalIncome) * 100
-                  : 0
-              ).toFixed(0)}
-              % of total
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Cash Tips */}
-        <Card>
-          <CardBody>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: COLORS.textSub,
-              }}
-            >
-              CASH TIPS
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 24,
-                fontWeight: 700,
-              }}
-            >
-              {toUSD(sum.cash)}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: COLORS.textSub,
-              }}
-            >
-              {(
-                sum.totalIncome
-                  ? (sum.cash / sum.totalIncome) * 100
-                  : 0
-              ).toFixed(0)}
-              % of total
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Digital Tips */}
-        <Card>
-          <CardBody>
-            <div
-              style={{
-                fontSize: 11,
-                letterSpacing: 0.6,
-                textTransform: "uppercase",
-                color: COLORS.textSub,
-              }}
-            >
-              DIGITAL TIPS
-            </div>
-            <div
-              style={{
-                marginTop: 8,
-                fontSize: 24,
-                fontWeight: 700,
-              }}
-            >
-              {toUSD(sum.digital)}
-            </div>
-            <div
-              style={{
-                marginTop: 4,
-                fontSize: 12,
-                color: COLORS.textSub,
-              }}
-            >
-              {(
-                sum.totalIncome
-                  ? (sum.digital / sum.totalIncome) * 100
-                  : 0
-              ).toFixed(0)}
-              % of total
-            </div>
-          </CardBody>
-        </Card>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>{formatCurrency(m.value)}</div>
+            <div style={{ opacity: 0.65, marginTop: 4 }}>{pct(m.value, sum.total)} of total</div>
+          </div>
+        ))}
       </div>
 
-      {/* Donut + Breakdown */}
-      <Card>
-        <CardBody>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr",
-              gap: 24,
-              alignItems: "center",
-            }}
-          >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr",
-                gap: 24,
-              }}
-            >
-              <DonutSVG
-                bag={sum.bag}
-                pregrat={sum.pregrat}
-                cash={sum.cash}
-                digital={sum.digital}
-                total={sum.totalIncome}
-                label="Total"
-              />
-              <div style={{ display: "grid", gap: 12 }}>
-                <div>
-                  <div style={{ fontSize: 14, color: COLORS.textSub }}>
-                    {LABELS[range]}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 28,
-                      fontWeight: 700,
-                      marginTop: 4,
-                    }}
-                  >
-                    {toUSD(sum.totalIncome)}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: COLORS.textSub,
-                      marginTop: 4,
-                    }}
-                  >
-                    Avg / Loop:{" "}
-                    {toUSD(Math.round(sum.avgPerLoop || 0))}
-                  </div>
-                </div>
-                <div
-                  style={{
-                    height: 1,
-                    background: "rgba(120,120,120,.25)",
-                  }}
-                />
-                <div style={{ display: "grid", gap: 10 }}>
-                  <Row
-                    label="Bag Fees"
-                    value={sum.bag}
-                    pct={pct(sum.bag)}
-                    color={COLORS.bag}
-                  />
-                  <Row
-                    label="Pre-Grat"
-                    value={sum.pregrat}
-                    pct={pct(sum.pregrat)}
-                    color={COLORS.pre}
-                  />
-                  <Row
-                    label="Cash Tips"
-                    value={sum.cash}
-                    pct={pct(sum.cash)}
-                    color={COLORS.cash}
-                  />
-                  <Row
-                    label="Digital Tips"
-                    value={sum.digital}
-                    pct={pct(sum.digital)}
-                    color={COLORS.digital}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      {/* Donut */}
+      <div style={{ ...cardStyle, marginTop: 14, textAlign: "center" }}>
+        <div style={{ display: "flex", justifyContent: "center" }}>
+          <DonutSVG bag={sum.bag} pre={sum.pre} cash={sum.cash} digital={sum.digital} />
+        </div>
+      </div>
 
-      {/* Recent Loops */}
-      <Card>
-        <CardBody className="no-padding">
-          <div
-            style={{
-              padding: 16,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 600 }}>
-              Most Recent Loops
-            </div>
-            <span
-              style={{
-                padding: "3px 8px",
-                fontSize: 12,
-                borderRadius: 999,
-                background: "rgba(120,120,120,.15)",
-                color: "rgba(200,200,200,.9)",
-              }}
-            >
-              {loops.length} shown
-            </span>
+      {/* Recent Income */}
+      <div style={{ ...cardStyle, marginTop: 14 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent Income</div>
+
+        {recentIncome.length === 0 ? (
+          <div style={{ opacity: 0.7 }}>No loops in this range yet.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10 }}>
+            {recentIncome.map((r, idx) => (
+              <div
+                key={`${r.date}-${idx}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.04)",
+                }}
+              >
+                <div style={{ opacity: 0.85 }}>{r.date || "—"}</div>
+                <div style={{ fontWeight: 800 }}>{formatCurrency(r.total)}</div>
+              </div>
+            ))}
           </div>
-          <div
-            style={{
-              height: 1,
-              background: "rgba(120,120,120,.25)",
-            }}
-          />
-          <div>
-            {[...loops]
-              .sort((a, b) => b.date.getTime() - a.date.getTime())
-              .slice(0, 5)
-              .map((l) => (
-                <div
-                  key={l.id}
-                  style={{
-                    padding: "12px 16px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    borderTop: "1px solid rgba(120,120,120,.12)",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 3,
-                        background: COLORS.bag,
-                      }}
-                    />
-                    <div
-                      style={{
-                        fontSize: 14,
-                        fontWeight: 600,
-                      }}
-                    >
-                      {l.courseName ?? "Loop"}
-                    </div>
-                    {l.loopType && (
-                      <span
-                        style={{
-                          padding: "2px 6px",
-                          fontSize: 11,
-                          borderRadius: 999,
-                          background: "rgba(120,120,120,.15)",
-                          color: "rgba(200,200,200,.9)",
-                        }}
-                      >
-                        {l.loopType}
-                      </span>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      fontSize: 13,
-                      color: COLORS.textSub,
-                    }}
-                  >
-                    {l.date.toLocaleDateString()} •{" "}
-                    {toUSD(
-                      l.bagFee + l.pregrat + l.tipCash + l.tipDigital
-                    )}
-                  </div>
-                </div>
-              ))}
-          </div>
-        </CardBody>
-      </Card>
+        )}
+      </div>
     </div>
   );
 }
-

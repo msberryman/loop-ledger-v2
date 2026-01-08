@@ -91,15 +91,62 @@ export function deleteExpense(id) {
   notify();
 }
 
-export function getSettings(): { mileageRate: number } {
-  const data = localStorage.getItem("settings");
-  if (!data) {
-    // default settings if none exist
-    return { mileageRate: 0.67 };
+// ---- Settings ----
+export type UserSettings = {
+  mileageRate: number;
+  homeAddress?: string;
+  homePlaceId?: string | null;
+};
+
+export function getSettings(): UserSettings {
+  // NEW canonical storage (Settings.tsx uses this)
+  try {
+    const raw = localStorage.getItem("ll_user_settings");
+    if (raw) {
+      const data = JSON.parse(raw);
+      return {
+        mileageRate: Number(data.mileage_rate ?? 0.67),
+        homeAddress: data.home_address ?? "",
+        homePlaceId: data.home_place_id ?? null,
+      };
+    }
+  } catch (err) {
+    console.error("Error reading ll_user_settings:", err);
   }
-  return JSON.parse(data);
+
+  // LEGACY fallback (older builds)
+  try {
+    const legacy = localStorage.getItem("settings");
+    if (legacy) {
+      const data = JSON.parse(legacy);
+      return {
+        mileageRate: Number(data.mileageRate ?? 0.67),
+        homeAddress: "",
+        homePlaceId: null,
+      };
+    }
+  } catch (err) {
+    console.error("Error reading legacy settings:", err);
+  }
+
+  // Default
+  return { mileageRate: 0.67, homeAddress: "", homePlaceId: null };
 }
 
-export function saveSettings(settings: { mileageRate: number }) {
-  localStorage.setItem("settings", JSON.stringify(settings));
+export function saveSettings(settings: UserSettings) {
+  // Write NEW canonical format
+  const payload = {
+    home_address: settings.homeAddress ?? "",
+    home_place_id: settings.homePlaceId ?? null,
+    mileage_rate: settings.mileageRate ?? 0.67,
+  };
+  localStorage.setItem("ll_user_settings", JSON.stringify(payload));
+
+  // Also write legacy (optional safety)
+  localStorage.setItem(
+    "settings",
+    JSON.stringify({ mileageRate: settings.mileageRate ?? 0.67 })
+  );
+
+  notify();
 }

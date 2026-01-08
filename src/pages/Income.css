@@ -1,0 +1,119 @@
+/* Income.css */
+
+.income-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px 16px 48px;
+  display: grid;
+  gap: 18px;
+}
+
+/* Title + filters row */
+.income-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.income-title {
+  font-size: 32px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* Reuse the same “pill group” feel used elsewhere */
+.income-filters {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 120, 120, 0.35);
+  background: rgba(120, 120, 120, 0.12);
+}
+
+/* Canonical button class */
+.income-filter-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #cbd5e1;
+  transition: background 0.15s ease;
+}
+
+.income-filter-btn.is-active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+/* Aliases so Income.tsx can use your existing class names without breaking */
+.income-filter-pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #cbd5e1;
+  transition: background 0.15s ease;
+}
+
+.income-filter-pill.active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+/* ---- Metric label + color dot ---- */
+.income-metric-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 1.2px;
+  opacity: 0.7;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.income-color-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 9px;
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.35), 0 0 14px rgba(255,255,255,0.08);
+}
+
+/* Mobile: stack title and filters like your other pages */
+@media (max-width: 520px) {
+  .income-page {
+    padding-top: 12px;
+    gap: 14px;
+  }
+
+  .income-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .income-title {
+    font-size: 28px;
+  }
+
+  .income-filters {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .income-filter-btn,
+  .income-filter-pill {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
+

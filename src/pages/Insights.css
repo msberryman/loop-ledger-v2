@@ -1,0 +1,97 @@
+/* Insights.css — match Income header + filter pill styling */
+
+.insights-page {
+  min-height: 100vh;
+  color: #eaeaea;
+}
+
+/* Title + filters row */
+.insights-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  max-width: 960px;
+  margin: 0 auto 14px;
+}
+
+.insights-title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.2px;
+}
+
+/* Pill group container */
+.insights-filters {
+  display: inline-flex;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 120, 120, 0.35);
+  background: rgba(120, 120, 120, 0.12);
+}
+
+/* Primary pill style (matches Income's “pill” approach) */
+.insights-filter-pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #cbd5e1;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+
+.insights-filter-pill:active {
+  transform: scale(0.98);
+}
+
+.insights-filter-pill.active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+/* Back-compat (if anything still references btn/is-active) */
+.insights-filter-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 800;
+  border: none;
+  cursor: pointer;
+  background: transparent;
+  color: #cbd5e1;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.05s ease;
+}
+
+.insights-filter-btn.is-active {
+  background: #3b82f6;
+  color: #fff;
+}
+
+/* Mobile: stack title and filters */
+@media (max-width: 520px) {
+  .insights-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .insights-title {
+    font-size: 28px;
+  }
+
+  .insights-filters {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .insights-filter-pill,
+  .insights-filter-btn {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+}
