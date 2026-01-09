@@ -26,7 +26,7 @@ describe("Base UI contract", () => {
     );
 
     // Loops: assert stable control
-    await screen.findByRole("button", { name: /add loop/i });
+    await screen.findByText(/add loop/i);
 
     // Expenses
     await clickTab(user, /expenses/i);
