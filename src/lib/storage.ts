@@ -31,9 +31,9 @@ export function saveLoops(list) {
 }
 
 // ---- Subscribe to loop changes ----
-const loopSubscribers = new Set();
+const loopSubscribers = new Set<() => void>();
 
-export function subscribe(callback) {
+export function subscribe(callback: () => void) {
   loopSubscribers.add(callback);
   return () => loopSubscribers.delete(callback);
 }
@@ -41,6 +41,7 @@ export function subscribe(callback) {
 function notify() {
   for (const cb of loopSubscribers) cb();
 }
+
 
 // ---- Add Loop ----
 export function addLoop(loop) {

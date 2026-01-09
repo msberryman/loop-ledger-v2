@@ -46,12 +46,21 @@ export default function ExpensesPage() {
     setExpenses(getExpenses() as Expense[]);
   }, []);
 
-  const filtered = useMemo(() => {
+    const filtered = useMemo(() => {
     const { start, end } = getDateRange(rangeKey);
+
+    // getDateRange() may return Date objects; expenses store dates as "YYYY-MM-DD" strings.
+    // Normalize to "YYYY-MM-DD" strings so comparisons are valid + build passes.
+    const startKey =
+      start instanceof Date ? start.toISOString().slice(0, 10) : String(start);
+    const endKey =
+      end instanceof Date ? end.toISOString().slice(0, 10) : String(end);
+
     return (expenses || [])
-      .filter((e) => e.date >= start && e.date <= end)
+      .filter((e) => e.date >= startKey && e.date <= endKey)
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [expenses, rangeKey]);
+
 
   function refresh() {
     setExpenses(getExpenses() as Expense[]);
