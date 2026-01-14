@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./Income.css";
-import { supabase } from "../supabaseClient"; // kept for parity with existing imports
+import { getLoops, refreshAll, subscribe } from "../lib/storage";
 
 /* ---------------- Types ---------------- */
 type Loop = {
@@ -105,19 +105,6 @@ function normalizeLoop(loop: Partial<Loop> & Record<string, any>) {
 type NLoop = ReturnType<typeof normalizeLoop>;
 
 /* ---------------- Data source ---------------- */
-function useAllLoops(): NLoop[] {
-  const [loops, setLoops] = useState<NLoop[]>([]);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("loops");
-      const parsed = raw ? (JSON.parse(raw) as any[]) : [];
-      setLoops(parsed.map((l) => normalizeLoop(l)));
-    } catch {
-      setLoops([]);
-    }
-  }, []);
-  return loops;
-}
 
 /* ---------------- Range & math ---------------- */
 type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
@@ -276,7 +263,28 @@ function DonutSVG({
 
 /* ---------------- Page ---------------- */
 export default function IncomePage() {
-  const allLoops = useAllLoops();
+  const [allLoops, setAllLoops] = useState<NLoop[]>([]);
+
+useEffect(() => {
+  // load cache immediately
+  setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
+
+  // then refresh from Supabase
+  refreshAll()
+    .then(() => setAllLoops(getLoops().map((l: any) => normalizeLoop(l))))
+    .catch((e) => console.error("refreshAll failed:", e));
+
+  const unsub = subscribe(() => {
+    setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
+  });
+
+  return () => {
+    try {
+      unsub?.();
+    } catch {}
+  };
+}, []);
+
   const [range, setRange] = useState<RangeKey>("mtd");
 
   const loops = useMemo(() => filterLoopsByRange(allLoops, range), [allLoops, range]);

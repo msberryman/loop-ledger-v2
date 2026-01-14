@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getSettings, refreshAll, saveSettings } from "../lib/storage";
 import { Card } from "../ui/card";
 import { Button } from "../ui/Button";
 
@@ -78,21 +79,32 @@ const [mileageRate, setMileageRate] = useState("0.67");
   const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load existing settings from localStorage
-  useEffect(() => {
+// Load settings from Supabase (via storage cache)
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
     try {
-      const raw = localStorage.getItem("ll_user_settings");
-      if (raw) {
-        const data = JSON.parse(raw);
-        setAddress(data.home_address || "");
-        setPlaceId(data.home_place_id || null);
-      }
-    } catch {
-      // ignore
+      await refreshAll(); // pulls ll_user_settings into cache
+      const s = getSettings();
+
+      if (cancelled) return;
+
+      setAddress(s?.homeAddress || "");
+      setPlaceId(s?.homePlaceId || null);
+      setMileageRate(String(s?.mileageRate ?? "0.67"));
+    } catch (err) {
+      console.error("Failed to load settings:", err);
     } finally {
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
-  }, []);
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+
 
   // Wire up autocomplete to update address + placeId
   usePlacesAutocomplete(inputRef, (text, pid) => {
@@ -101,18 +113,23 @@ const [mileageRate, setMileageRate] = useState("0.67");
   });
 
   async function handleSave() {
-    setSaving(true);
-    try {
-      const payload = {
-  home_address: address,
-  home_place_id: placeId,
-  mileage_rate: mileageRate,
-};
-      localStorage.setItem("ll_user_settings", JSON.stringify(payload));
-    } finally {
-      setSaving(false);
-    }
+  setSaving(true);
+  try {
+    await saveSettings({
+      homeAddress: address,
+      homePlaceId: placeId,
+      mileageRate: mileageRate,
+    });
+
+    // refresh caches so Home/Loops use the new settings immediately
+    await refreshAll();
+  } catch (err) {
+    console.error("Save settings failed:", err);
+    alert("Failed to save settings. Please try again.");
+  } finally {
+    setSaving(false);
   }
+}
 
   async function handleLogout() {
     try {
@@ -120,9 +137,8 @@ const [mileageRate, setMileageRate] = useState("0.67");
     } catch (err) {
       console.error("Sign out failed", err);
     } finally {
-      localStorage.removeItem("ll_user_settings");
-      navigate("/login", { replace: true });
-    }
+  navigate("/login", { replace: true });
+}
   }
 
   return (
