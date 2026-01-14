@@ -151,13 +151,6 @@ const [preGratStr, setPreGratStr] = useState("");
   setSettings(getSettings());
 }, []);
 
-  return () => {
-    try {
-      unsub?.();
-    } catch {}
-  };
-}, []);
-
   // Initialize Google Places Autocomplete (course input)
   useEffect(() => {
     if (!inputRef.current) return;
