@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getExpenses, addExpense, deleteExpense, newId } from "../lib/storage";
+import { getExpenses, refreshAll, saveExpense, deleteExpense } from "../lib/storage";
 
 import DateRangeChips from "../components/DateRangeChips";
 import { getDateRange } from "../lib/dateRange";
@@ -43,8 +43,14 @@ export default function ExpensesPage() {
   const [showReceiptMenu, setShowReceiptMenu] = useState(false);
 
   useEffect(() => {
-    setExpenses(getExpenses() as Expense[]);
-  }, []);
+  // load cache immediately
+  setExpenses(getExpenses() as Expense[]);
+
+  // then fetch from Supabase into cache
+  refreshAll()
+    .then(() => setExpenses(getExpenses() as Expense[]))
+    .catch((e) => console.error("refreshAll failed:", e));
+}, []);
 
     const filtered = useMemo(() => {
     const { start, end } = getDateRange(rangeKey);
@@ -62,9 +68,10 @@ export default function ExpensesPage() {
   }, [expenses, rangeKey]);
 
 
-  function refresh() {
-    setExpenses(getExpenses() as Expense[]);
-  }
+  async function refresh() {
+  await refreshAll();
+  setExpenses(getExpenses() as Expense[]);
+}
 
   function onPickReceipt(file?: File | null) {
     if (!file) return;
@@ -84,39 +91,51 @@ export default function ExpensesPage() {
   if (attachInputRef.current) attachInputRef.current.value = "";
 }
 
-  function submitExpense() {
-    // Keep logic simple + safe
-    if (!date) return alert("Please enter a date.");
-    const amt = parseFloat(amount || "0");
-    if (!Number.isFinite(amt) || amt <= 0) return alert("Please enter a valid amount.");
+  async function submitExpense() {
+  if (!date) return alert("Please enter a date.");
+  const amt = parseFloat(amount || "0");
+  if (!Number.isFinite(amt) || amt <= 0)
+    return alert("Please enter a valid amount.");
 
-    const newExpense: Expense = {
-      id: newId(),
-      date,
-      vendor: vendor.trim() || undefined,
-      description: description.trim() || undefined,
-      category: category || undefined,
-      amount: amt,
-      receiptName: receiptName || undefined,
-      receiptDataUrl: receiptDataUrl || undefined,
-    };
+  const newExpense: Expense = {
+    id: crypto?.randomUUID?.() ? crypto.randomUUID() : String(Date.now()),
+    date,
+    vendor: vendor.trim() || undefined,
+    description: description.trim() || undefined,
+    category: category || undefined,
+    amount: amt,
+    receiptName: receiptName || undefined,
+    receiptDataUrl: receiptDataUrl || undefined,
+  };
 
-    addExpense(newExpense);
-    refresh();
-
-    // Reset form
-    setDate("");
-    setVendor("");
-    setAmount("");
-    setCategory("");
-    setDescription("");
-    clearReceipt();
+  try {
+    // storage.ts maps Expense -> ll_expenses row
+    await saveExpense(newExpense);
+    await refresh();
+  } catch (err) {
+    console.error("Save expense failed:", err);
+    alert("Failed to save expense. Please try again.");
+    return;
   }
 
-  function removeExpense(id: string) {
-    deleteExpense(id);
-    refresh();
+  // Reset form
+  setDate("");
+  setVendor("");
+  setAmount("");
+  setCategory("");
+  setDescription("");
+  clearReceipt();
+}
+
+  async function removeExpense(id: string) {
+  try {
+    await deleteExpense(id);
+    await refresh();
+  } catch (err) {
+    console.error("Delete expense failed:", err);
+    alert("Failed to delete expense. Please try again.");
   }
+}
 
   return (
     <div className="expPage">
