@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { getSettings, refreshAll, saveSettings } from "../lib/storage";
 import { Card } from "../ui/card";
 import { Button } from "../ui/Button";
 
@@ -78,21 +79,30 @@ const [mileageRate, setMileageRate] = useState("0.67");
   const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  // Load existing settings from localStorage
-  useEffect(() => {
-  try {
-    const raw = localStorage.getItem("ll_user_settings");
-    if (raw) {
-      const s = JSON.parse(raw);
-      setAddress(s.home_address || "");
-      setPlaceId(s.home_place_id ?? null);
-      setMileageRate(String(s.mileage_rate ?? "0.67"));
+// Load settings from Supabase (via storage cache)
+useEffect(() => {
+  let cancelled = false;
+
+  (async () => {
+    try {
+      await refreshAll(); // pulls ll_user_settings into cache
+      const s = getSettings();
+
+      if (cancelled) return;
+
+      setAddress(s?.homeAddress || "");
+      setPlaceId(s?.homePlaceId || null);
+      setMileageRate(String(s?.mileageRate ?? "0.67"));
+    } catch (err) {
+      console.error("Failed to load settings:", err);
+    } finally {
+      if (!cancelled) setLoading(false);
     }
-  } catch {
-    // no-op
-  } finally {
-    setLoading(false);
-  }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
 }, []);
 
 
@@ -103,18 +113,23 @@ const [mileageRate, setMileageRate] = useState("0.67");
   });
 
   async function handleSave() {
-    setSaving(true);
-    try {
-      const payload = {
-  home_address: address,
-  home_place_id: placeId,
-  mileage_rate: mileageRate,
-};
-      localStorage.setItem("ll_user_settings", JSON.stringify(payload));
-    } finally {
-      setSaving(false);
-    }
+  setSaving(true);
+  try {
+    await saveSettings({
+      homeAddress: address,
+      homePlaceId: placeId,
+      mileageRate: mileageRate,
+    });
+
+    // refresh caches so Home/Loops use the new settings immediately
+    await refreshAll();
+  } catch (err) {
+    console.error("Save settings failed:", err);
+    alert("Failed to save settings. Please try again.");
+  } finally {
+    setSaving(false);
   }
+}
 
   async function handleLogout() {
     try {
@@ -122,9 +137,8 @@ const [mileageRate, setMileageRate] = useState("0.67");
     } catch (err) {
       console.error("Sign out failed", err);
     } finally {
-      localStorage.removeItem("ll_user_settings");
-      navigate("/login", { replace: true });
-    }
+  navigate("/login", { replace: true });
+}
   }
 
   return (
