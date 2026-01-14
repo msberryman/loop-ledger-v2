@@ -62,6 +62,10 @@ function loopFromDb(r: any) {
     mileage_miles: Number(r.mileage_miles) || 0,
     mileage_cost: Number(r.mileage_cost) || 0,
 
+    reportTime: r.report_time ?? "",
+    teeTime: r.tee_time ?? "",
+    endTime: r.end_time ?? "",
+
     notes: r.notes ?? "",
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -86,6 +90,10 @@ function loopToDb(userId: string, loop: any) {
 
     mileage_miles: Number(loop.mileage_miles ?? loop.mileageMiles) || 0,
     mileage_cost: Number(loop.mileage_cost ?? loop.mileageCost) || 0,
+
+    report_time: loop.reportTime || null,
+    tee_time: loop.teeTime || null,
+    end_time: loop.endTime || null,
 
     notes: loop.notes || null,
     updated_at: new Date().toISOString(),
