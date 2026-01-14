@@ -5,33 +5,53 @@ import DateRangeChips from "../components/DateRangeChips";
 import { getDateRange, isWithinRange, type DateRangeKey } from "../lib/dateRange";
 import "./Loops.css";
 
-async function computeRoundTripMiles(params: {
-  homePlaceId: string;
-  destPlaceId: string;
-}): Promise<number | null> {
-  const w = window as any;
-  if (!w.google?.maps?.DistanceMatrixService) return null;
+async function waitForGoogle(timeoutMs = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const w = window as any;
+    if (w.google?.maps?.DistanceMatrixService) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
 
+async function computeRoundTripMilesFlexible(params: {
+  homePlaceId?: string;
+  homeAddress?: string;
+  destPlaceId?: string;
+  destAddress?: string;
+}): Promise<number | null> {
+  const ok = await waitForGoogle(2000);
+  if (!ok) return null;
+
+  const w = window as any;
   const service = new w.google.maps.DistanceMatrixService();
+
+  const origin =
+    params.homePlaceId
+      ? ({ placeId: params.homePlaceId } as any)
+      : (params.homeAddress || "").trim();
+
+  const dest =
+    params.destPlaceId
+      ? ({ placeId: params.destPlaceId } as any)
+      : (params.destAddress || "").trim();
+
+  if (!origin || !dest) return null;
 
   return await new Promise((resolve) => {
     service.getDistanceMatrix(
       {
-        origins: [{ placeId: params.homePlaceId }],
-        destinations: [{ placeId: params.destPlaceId }],
+        origins: [origin],
+        destinations: [dest],
         travelMode: w.google.maps.TravelMode.DRIVING,
         unitSystem: w.google.maps.UnitSystem.IMPERIAL,
       },
-      (response: any, status: string) => {
+      (resp: any, status: string) => {
         try {
-          if (status !== "OK" || !response) return resolve(null);
-
-          const element = response.rows?.[0]?.elements?.[0];
-          if (!element || element.status !== "OK") return resolve(null);
-
-          const meters = element.distance?.value;
-          if (typeof meters !== "number") return resolve(null);
-
+          if (status !== "OK") return resolve(null);
+          const meters = resp?.rows?.[0]?.elements?.[0]?.distance?.value;
+          if (!Number.isFinite(meters)) return resolve(null);
           const oneWayMiles = meters / 1609.344;
           resolve(oneWayMiles * 2);
         } catch {
@@ -212,19 +232,21 @@ const [preGratStr, setPreGratStr] = useState("");
 
   // If we have both place IDs, compute fresh round-trip mileage
   const homePlaceId = settings?.homePlaceId || "";
-  const destPlaceId = form.placeId || "";
+const homeAddress = settings?.homeAddress || "";
+const destPlaceId = form.placeId || "";
+const destAddress = form.course || "";
 
-  if (homePlaceId && destPlaceId) {
-    const computed = await computeRoundTripMiles({
-      homePlaceId,
-      destPlaceId,
-    });
+const computed = await computeRoundTripMilesFlexible({
+  homePlaceId,
+  homeAddress,
+  destPlaceId,
+  destAddress,
+});
 
-    if (computed != null && Number.isFinite(computed)) {
-      mileageMiles = computed;
-      mileageCost = computed * mileageRate;
-    }
-  }
+if (computed != null && Number.isFinite(computed)) {
+  mileageMiles = computed;
+  mileageCost = computed * mileageRate;
+}
 
   const loopToSave: Loop = {
     ...form,
