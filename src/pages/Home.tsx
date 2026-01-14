@@ -153,31 +153,6 @@ export default function HomePage() {
           Add Expense
         </button>
       </div>
-                {/* TEMP DEBUG BLOCK — REMOVE AFTER DEBUGGING */}
-      <pre
-        style={{
-          marginTop: 16,
-          padding: 12,
-          background: "#111",
-          color: "#0f0",
-          fontSize: 12,
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-word",
-        }}
-      >
-        {JSON.stringify(
-          {
-            ua: navigator.userAgent,
-            homeSettings: localStorage.getItem("ll_user_settings"),
-            loops_ll: localStorage.getItem("ll_loops"),
-            loops: localStorage.getItem("loops"),
-            tips: localStorage.getItem("tips"),
-            allKeys: Object.keys(localStorage),
-          },
-          null,
-          2
-        )}
-      </pre>
     </div>
   );
 }
