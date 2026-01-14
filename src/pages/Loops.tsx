@@ -1,5 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { getLoops, saveLoops, getSettings } from "../lib/storage";
+import {
+  getLoops,
+  getSettings,
+  refreshAll,
+  saveLoop,
+  deleteLoop,
+  updateLoopMileage,
+} from "../lib/storage";
 
 import DateRangeChips from "../components/DateRangeChips";
 import { getDateRange, isWithinRange, type DateRangeKey } from "../lib/dateRange";
@@ -147,8 +154,17 @@ const [preGratStr, setPreGratStr] = useState("");
   }, [loops, rangeKey]);
 
   useEffect(() => {
+  // load cache immediately
   setLoops(getLoops() as any);
   setSettings(getSettings());
+
+  // then fetch from Supabase into cache
+  refreshAll()
+    .then(() => {
+      setLoops(getLoops() as any);
+      setSettings(getSettings());
+    })
+    .catch((e) => console.error("refreshAll failed:", e));
 }, []);
 
   // Initialize Google Places Autocomplete (course input)
@@ -220,33 +236,31 @@ const [preGratStr, setPreGratStr] = useState("");
   };
 
   const onSave = async () => {
-  // Basic validation
   if (!form.date || !form.course) return;
 
-  const settings = getSettings();
-  const mileageRate = Number(settings?.mileageRate ?? 0.67);
+  const s = getSettings();
+  const mileageRate = Number(s?.mileageRate ?? 0.67);
 
-  // Default to existing values (important for edits)
+  // compute mileage
   let mileageMiles = Number(form.mileage_miles ?? 0);
   let mileageCost = Number(form.mileage_cost ?? 0);
 
-// Compute mileage using placeIds when available, otherwise fallback to addresses
-const homePlaceId = settings?.homePlaceId || "";
-const homeAddress = settings?.homeAddress || "";
-const destPlaceId = form.placeId || "";
-const destAddress = form.course || "";
+  const homePlaceId = s?.homePlaceId || "";
+  const homeAddress = s?.homeAddress || "";
+  const destPlaceId = form.placeId || "";
+  const destAddress = form.course || "";
 
-const computed = await computeRoundTripMilesFlexible({
-  homePlaceId,
-  homeAddress,
-  destPlaceId,
-  destAddress,
-});
+  const computed = await computeRoundTripMilesFlexible({
+    homePlaceId,
+    homeAddress,
+    destPlaceId,
+    destAddress,
+  });
 
-if (computed != null && Number.isFinite(computed)) {
-  mileageMiles = computed;
-  mileageCost = computed * mileageRate;
-}
+  if (computed != null && Number.isFinite(computed)) {
+    mileageMiles = computed;
+    mileageCost = computed * mileageRate;
+  }
 
   const loopToSave: Loop = {
     ...form,
@@ -259,14 +273,23 @@ if (computed != null && Number.isFinite(computed)) {
     mileage_cost: mileageCost,
   };
 
-  const next = form.id
-    ? (loops || []).map((l) => (l.id === form.id ? loopToSave : l))
-    : [loopToSave, ...(loops || [])];
+  try {
+    // 1) Save loop (without relying on local state)
+    const saved = await saveLoop(loopToSave);
 
-  setLoops(next);
-  saveLoops(next);
+    // 2) Ensure mileage fields are persisted (even if computed later)
+    await updateLoopMileage(saved.id, mileageMiles, mileageCost);
 
-  resetForm();
+    // 3) Refresh cache + UI
+    await refreshAll();
+    setLoops(getLoops() as any);
+    setSettings(getSettings());
+
+    resetForm();
+  } catch (err) {
+    console.error("Save loop failed:", err);
+    alert("Failed to save loop. Please try again.");
+  }
 };
 
 
@@ -283,11 +306,17 @@ if (computed != null && Number.isFinite(computed)) {
   setPreGratStr(l.preGrat ? String(l.preGrat) : "");
   };
 
-  const onDelete = (id: string) => {
-    const next = (loops || []).filter((l) => l.id !== id);
-    setLoops(next);
-    saveLoops(next);
-  };
+  const onDelete = async (id: string) => {
+  try {
+    await deleteLoop(id);
+    await refreshAll();
+    setLoops(getLoops() as any);
+    setSettings(getSettings());
+  } catch (err) {
+    console.error("Delete loop failed:", err);
+    alert("Failed to delete loop. Please try again.");
+  }
+};
 
     return (
     <div className="ll-page">
