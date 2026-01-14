@@ -80,19 +80,21 @@ const [mileageRate, setMileageRate] = useState("0.67");
 
   // Load existing settings from localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("ll_user_settings");
-      if (raw) {
-        const data = JSON.parse(raw);
-        setAddress(data.home_address || "");
-        setPlaceId(data.home_place_id || null);
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false);
+  try {
+    const raw = localStorage.getItem("ll_user_settings");
+    if (raw) {
+      const s = JSON.parse(raw);
+      setAddress(s.home_address || "");
+      setPlaceId(s.home_place_id ?? null);
+      setMileageRate(String(s.mileage_rate ?? "0.67"));
     }
-  }, []);
+  } catch {
+    // no-op
+  } finally {
+    setLoading(false);
+  }
+}, []);
+
 
   // Wire up autocomplete to update address + placeId
   usePlacesAutocomplete(inputRef, (text, pid) => {

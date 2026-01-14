@@ -147,9 +147,16 @@ const [preGratStr, setPreGratStr] = useState("");
   }, [loops, rangeKey]);
 
   useEffect(() => {
-    setLoops(getLoops() || []);
-    setSettings(getSettings() || null);
-  }, []);
+  setLoops(getLoops() as any);
+  setSettings(getSettings());
+}, []);
+
+  return () => {
+    try {
+      unsub?.();
+    } catch {}
+  };
+}, []);
 
   // Initialize Google Places Autocomplete (course input)
   useEffect(() => {

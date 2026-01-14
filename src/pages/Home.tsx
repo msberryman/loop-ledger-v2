@@ -21,7 +21,7 @@ export default function HomePage() {
   const [filter, setFilter] = useState<FilterKey>("14D");
 
   // ---------- LOAD DATA ----------
-  useEffect(() => {
+ useEffect(() => {
   // load from cache first
   setLoops(getLoops());
   setExpenses(getExpenses());
@@ -39,19 +39,11 @@ export default function HomePage() {
   return () => {
     try {
       unsub?.();
-    } catch {}
+    } catch {
+      // no-op
+    }
   };
 }, []);
-
-    return () => {
-      // cleanup must be a function (NOT JSX)
-      try {
-        unsub?.();
-      } catch {
-        // no-op
-      }
-    };
-  }, []);
 
   // ---------- RANGE START ----------
   const rangeStart = useMemo(() => {
