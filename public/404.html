@@ -1,0 +1,18 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Loop Ledger</title>
+    <script>
+      // GitHub Pages SPA fallback
+      // Preserve the path and redirect back to index.html with the path in the querystring
+      (function () {
+        var l = window.location;
+        var repo = "/loop-ledger-v2";
+        var path = l.pathname.startsWith(repo) ? l.pathname.slice(repo.length) : l.pathname;
+        l.replace(repo + "/?p=" + encodeURIComponent(path + l.search + l.hash));
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
