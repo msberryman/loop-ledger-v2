@@ -169,7 +169,9 @@ export default function HomePage() {
           {
             ua: navigator.userAgent,
             homeSettings: localStorage.getItem("ll_user_settings"),
-            loops: localStorage.getItem("ll_loops"),
+            loops_ll: localStorage.getItem("ll_loops"),
+            loops: localStorage.getItem("loops"),
+            tips: localStorage.getItem("tips"),
             allKeys: Object.keys(localStorage),
           },
           null,
