@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import "./Insights.css";
-import { getLoops, saveLoops, getSettings } from "../lib/storage";
+import { getLoops, refreshAll, subscribe } from "../lib/storage";
 
 type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
 
@@ -71,8 +71,22 @@ export default function Insights() {
   const [loops, setLoops] = useState<any[]>([]);
 
   useEffect(() => {
+  setLoops(getLoops());
+
+  refreshAll()
+    .then(() => setLoops(getLoops()))
+    .catch((e) => console.error("refreshAll failed:", e));
+
+  const unsub = subscribe(() => {
     setLoops(getLoops());
-  }, []);
+  });
+
+  return () => {
+    try {
+      unsub?.();
+    } catch {}
+  };
+}, []);
 
   const filteredLoops = useMemo(() => {
     const now = new Date();
