@@ -15,6 +15,16 @@ async function waitForGoogle(timeoutMs = 2000) {
   return false;
 }
 
+async function waitForGoogle(timeoutMs = 2000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const w = window as any;
+    if (w.google?.maps?.DistanceMatrixService) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+
 async function computeRoundTripMilesFlexible(params: {
   homePlaceId?: string;
   homeAddress?: string;
@@ -230,8 +240,8 @@ const [preGratStr, setPreGratStr] = useState("");
   let mileageMiles = Number(form.mileage_miles ?? 0);
   let mileageCost = Number(form.mileage_cost ?? 0);
 
-  // If we have both place IDs, compute fresh round-trip mileage
-  const homePlaceId = settings?.homePlaceId || "";
+// Compute mileage using placeIds when available, otherwise fallback to addresses
+const homePlaceId = settings?.homePlaceId || "";
 const homeAddress = settings?.homeAddress || "";
 const destPlaceId = form.placeId || "";
 const destAddress = form.course || "";
