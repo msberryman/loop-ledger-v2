@@ -15,16 +15,6 @@ async function waitForGoogle(timeoutMs = 2000) {
   return false;
 }
 
-async function waitForGoogle(timeoutMs = 2000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const w = window as any;
-    if (w.google?.maps?.DistanceMatrixService) return true;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  return false;
-}
-
 async function computeRoundTripMilesFlexible(params: {
   homePlaceId?: string;
   homeAddress?: string;
