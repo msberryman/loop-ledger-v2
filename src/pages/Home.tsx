@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { getLoops, getExpenses, subscribe, getSettings } from "../lib/storage";
+import {
+  getLoops,
+  getExpenses,
+  subscribe,
+  getSettings,
+  refreshAll,
+} from "../lib/storage";
 import { useNavigate } from "react-router-dom";
 import "./Home.css";
 
@@ -16,15 +22,26 @@ export default function HomePage() {
 
   // ---------- LOAD DATA ----------
   useEffect(() => {
+  // load from cache first
+  setLoops(getLoops());
+  setExpenses(getExpenses());
+  setSettings(getSettings());
+
+  // then pull from Supabase
+  refreshAll().catch((e) => console.error("refreshAll failed:", e));
+
+  const unsub = subscribe(() => {
     setLoops(getLoops());
     setExpenses(getExpenses());
     setSettings(getSettings());
+  });
 
-    const unsub = subscribe(() => {
-      setLoops(getLoops());
-      setExpenses(getExpenses());
-      setSettings(getSettings());
-    });
+  return () => {
+    try {
+      unsub?.();
+    } catch {}
+  };
+}, []);
 
     return () => {
       // cleanup must be a function (NOT JSX)

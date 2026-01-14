@@ -1,209 +1,288 @@
 // src/lib/storage.ts
+import { supabase } from "./supabase";
 
-// ---- Internal keys ----
-const LOOPS_KEY = "loops";
-const EXPENSES_KEY = "expenses";
-
-// ---- Generate new IDs ----
-export function newId() {
-  return crypto.randomUUID();
-}
-
-// ---- Get Loops ----
-export function getLoops() {
-  try {
-    const raw = localStorage.getItem(LOOPS_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    // Normalize legacy loops so old data still works
-    const normalized = parsed.map(normalizeLoop);
-
-    // Optional: write back so migration is permanent
-    // (safe + prevents re-normalizing every load)
-    try {
-      localStorage.setItem(LOOPS_KEY, JSON.stringify(normalized));
-    } catch {
-      // ignore write-back failures
-    }
-
-    return normalized;
-  } catch (err) {
-    console.error("Error reading loops:", err);
-    return [];
-  }
-}
-
-function normalizeLoop(l: any) {
-  const bagFee = num(l.bagFee ?? l.bag_fee) ?? 0;
-
-  // Legacy tip model: tip + tipType ("Cash" | "Digital")
-  const legacyTip = num(l.tip);
-  const legacyTipType = String(l.tipType ?? l.tip_type ?? "").toLowerCase();
-
-  const cashTip =
-    num(l.cashTip ?? l.cash_tip) ??
-    (legacyTip != null && legacyTipType === "cash" ? legacyTip : null) ??
-    0;
-
-  const digitalTip =
-    num(l.digitalTip ?? l.digital_tip) ??
-    (legacyTip != null && legacyTipType === "digital" ? legacyTip : null) ??
-    0;
-
-  // Legacy pre-grat key is "pregrat"
-  const preGrat = num(l.preGrat ?? l.pre_grat ?? l.pregrat) ?? 0;
-
-  // Mileage naming safety
-  const mileage_miles = num(l.mileage_miles ?? l.mileageMiles) ?? 0;
-  const mileage_cost = num(l.mileage_cost ?? l.mileageCost) ?? 0;
-
-  return {
-    ...l,
-    bagFee,
-    cashTip,
-    digitalTip,
-    preGrat,
-    mileage_miles,
-    mileage_cost,
-  };
-}
-
-function num(v: any): number | null {
-  if (v === null || v === undefined || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-// ---- Save Loops ----
-export function saveLoops(list) {
-  try {
-    localStorage.setItem(LOOPS_KEY, JSON.stringify(list));
-  } catch (err) {
-    console.error("Error saving loops:", err);
-  }
-}
-
-// ---- Subscribe to loop changes ----
-const loopSubscribers = new Set<() => void>();
-
-export function subscribe(callback: () => void) {
-  loopSubscribers.add(callback);
-  return () => loopSubscribers.delete(callback);
-}
+type Subscriber = () => void;
+const subs = new Set<Subscriber>();
 
 function notify() {
-  for (const cb of loopSubscribers) cb();
+  subs.forEach((fn) => {
+    try {
+      fn();
+    } catch {
+      // ignore
+    }
+  });
 }
 
-
-// ---- Add Loop ----
-export function addLoop(loop) {
-  const list = getLoops();
-  list.push(loop);
-  saveLoops(list);
-  notify();
+export function subscribe(fn: Subscriber) {
+  subs.add(fn);
+  return () => subs.delete(fn);
 }
 
-// ---- Delete Loop ----
-export function deleteLoop(id) {
-  const list = getLoops().filter(x => x.id !== id);
-  saveLoops(list);
-  notify();
+// ----- In-memory caches (source of truth is Supabase) -----
+let loopsCache: any[] = [];
+let expensesCache: any[] = [];
+let settingsCache: any = null;
+
+// Expose sync getters for UI that still reads synchronously
+export function getLoops() {
+  return loopsCache;
 }
-
-// ---- Expenses ----
-
 export function getExpenses() {
-  try {
-    const raw = localStorage.getItem(EXPENSES_KEY);
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch (err) {
-    console.error("Error reading expenses:", err);
-    return [];
-  }
+  return expensesCache;
+}
+export function getSettings() {
+  return settingsCache;
 }
 
-export function saveExpenses(list) {
-  try {
-    localStorage.setItem(EXPENSES_KEY, JSON.stringify(list));
-  } catch (err) {
-    console.error("Error saving expenses:", err);
-  }
+// ----- Helpers -----
+async function requireUserId(): Promise<string> {
+  const { data, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  const userId = data.user?.id;
+  if (!userId) throw new Error("Not authenticated");
+  return userId;
 }
 
-export function addExpense(exp) {
-  const list = getExpenses();
-  list.push(exp);
-  saveExpenses(list);
-  notify();
-}
+// DB row -> app object (camelCase)
+function loopFromDb(r: any) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    date: r.date,
+    course: r.course,
+    placeId: r.course_place_id ?? "", // keep compatible with your existing form usage
+    loopType: r.loop_type ?? "",
 
-export function deleteExpense(id) {
-  const list = getExpenses().filter(x => x.id !== id);
-  saveExpenses(list);
-  notify();
-}
+    bagFee: Number(r.bag_fee) || 0,
+    cashTip: Number(r.cash_tip) || 0,
+    digitalTip: Number(r.digital_tip) || 0,
+    preGrat: Number(r.pre_grat) || 0,
 
-// ---- Settings ----
-export type UserSettings = {
-  mileageRate: number;
-  homeAddress?: string;
-  homePlaceId?: string | null;
-};
+    mileage_miles: Number(r.mileage_miles) || 0,
+    mileage_cost: Number(r.mileage_cost) || 0,
 
-export function getSettings(): UserSettings {
-  // NEW canonical storage (Settings.tsx uses this)
-  try {
-    const raw = localStorage.getItem("ll_user_settings");
-    if (raw) {
-      const data = JSON.parse(raw);
-      return {
-        mileageRate: Number(data.mileage_rate ?? 0.67),
-        homeAddress: data.home_address ?? "",
-        homePlaceId: data.home_place_id ?? null,
-      };
-    }
-  } catch (err) {
-    console.error("Error reading ll_user_settings:", err);
-  }
-
-  // LEGACY fallback (older builds)
-  try {
-    const legacy = localStorage.getItem("settings");
-    if (legacy) {
-      const data = JSON.parse(legacy);
-      return {
-        mileageRate: Number(data.mileageRate ?? 0.67),
-        homeAddress: "",
-        homePlaceId: null,
-      };
-    }
-  } catch (err) {
-    console.error("Error reading legacy settings:", err);
-  }
-
-  // Default
-  return { mileageRate: 0.67, homeAddress: "", homePlaceId: null };
-}
-
-export function saveSettings(settings: UserSettings) {
-  // Write NEW canonical format
-  const payload = {
-    home_address: settings.homeAddress ?? "",
-    home_place_id: settings.homePlaceId ?? null,
-    mileage_rate: settings.mileageRate ?? 0.67,
+    notes: r.notes ?? "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
   };
-  localStorage.setItem("ll_user_settings", JSON.stringify(payload));
+}
 
-  // Also write legacy (optional safety)
-  localStorage.setItem(
-    "settings",
-    JSON.stringify({ mileageRate: settings.mileageRate ?? 0.67 })
-  );
+// app object -> DB row (snake_case)
+function loopToDb(userId: string, loop: any) {
+  return {
+    id: loop.id, // undefined is fine for insert
+    user_id: userId,
+
+    date: loop.date,
+    course: loop.course,
+    course_place_id: loop.placeId || null,
+    loop_type: loop.loopType || null,
+
+    bag_fee: Number(loop.bagFee) || 0,
+    cash_tip: Number(loop.cashTip) || 0,
+    digital_tip: Number(loop.digitalTip) || 0,
+    pre_grat: Number(loop.preGrat) || 0,
+
+    mileage_miles: Number(loop.mileage_miles ?? loop.mileageMiles) || 0,
+    mileage_cost: Number(loop.mileage_cost ?? loop.mileageCost) || 0,
+
+    notes: loop.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function expenseFromDb(r: any) {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    date: r.date,
+    category: r.category,
+    amount: Number(r.amount) || 0,
+    notes: r.notes ?? "",
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function expenseToDb(userId: string, e: any) {
+  return {
+    id: e.id,
+    user_id: userId,
+    date: e.date,
+    category: e.category,
+    amount: Number(e.amount) || 0,
+    notes: e.notes || null,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+function settingsFromDb(r: any) {
+  return {
+    userId: r.user_id,
+    homeAddress: r.home_address ?? "",
+    homePlaceId: r.home_place_id ?? "",
+    mileageRate: Number(r.mileage_rate) || 0.67,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+function settingsToDb(userId: string, s: any) {
+  return {
+    user_id: userId,
+    home_address: s?.homeAddress || null,
+    home_place_id: s?.homePlaceId || null,
+    mileage_rate: Number(s?.mileageRate) || 0.67,
+    updated_at: new Date().toISOString(),
+  };
+}
+
+// ----- Refresh (load from Supabase into caches) -----
+export async function refreshAll() {
+  const userId = await requireUserId();
+
+  // settings
+  const { data: sRow, error: sErr } = await supabase
+    .from("ll_user_settings")
+    .select("*")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (sErr) throw sErr;
+  settingsCache = sRow ? settingsFromDb(sRow) : null;
+
+  // loops
+  const { data: lRows, error: lErr } = await supabase
+    .from("ll_loops")
+    .select("*")
+    .eq("user_id", userId)
+    .order("date", { ascending: false });
+
+  if (lErr) throw lErr;
+  loopsCache = (lRows || []).map(loopFromDb);
+
+  // expenses
+  const { data: eRows, error: eErr } = await supabase
+    .from("ll_expenses")
+    .select("*")
+    .eq("user_id", userId)
+    .order("date", { ascending: false });
+
+  if (eErr) throw eErr;
+  expensesCache = (eRows || []).map(expenseFromDb);
 
   notify();
 }
+
+// ----- CRUD: Loops -----
+export async function saveLoop(loop: any) {
+  const userId = await requireUserId();
+  const payload = loopToDb(userId, loop);
+
+  const { data, error } = await supabase
+    .from("ll_loops")
+    .upsert(payload, { onConflict: "id" })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  // Update cache entry
+  const saved = loopFromDb(data);
+  loopsCache = [saved, ...loopsCache.filter((l) => l.id !== saved.id)];
+  notify();
+  return saved;
+}
+
+export async function deleteLoop(loopId: string) {
+  const userId = await requireUserId();
+
+  const { error } = await supabase
+    .from("ll_loops")
+    .delete()
+    .eq("id", loopId)
+    .eq("user_id", userId);
+
+  if (error) throw error;
+
+  loopsCache = loopsCache.filter((l) => l.id !== loopId);
+  notify();
+}
+
+// For mileage update after compute
+export async function updateLoopMileage(loopId: string, miles: number, cost: number) {
+  const userId = await requireUserId();
+
+  const { data, error } = await supabase
+    .from("ll_loops")
+    .update({
+      mileage_miles: Number(miles) || 0,
+      mileage_cost: Number(cost) || 0,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", loopId)
+    .eq("user_id", userId)
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  const updated = loopFromDb(data);
+  loopsCache = [updated, ...loopsCache.filter((l) => l.id !== updated.id)];
+  notify();
+  return updated;
+}
+
+// ----- CRUD: Expenses -----
+export async function saveExpense(expense: any) {
+  const userId = await requireUserId();
+  const payload = expenseToDb(userId, expense);
+
+  const { data, error } = await supabase
+    .from("ll_expenses")
+    .upsert(payload, { onConflict: "id" })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  const saved = expenseFromDb(data);
+  expensesCache = [saved, ...expensesCache.filter((e) => e.id !== saved.id)];
+  notify();
+  return saved;
+}
+
+export async function deleteExpense(expenseId: string) {
+  const userId = await requireUserId();
+
+  const { error } = await supabase
+    .from("ll_expenses")
+    .delete()
+    .eq("id", expenseId)
+    .eq("user_id", userId);
+
+  if (error) throw error;
+
+  expensesCache = expensesCache.filter((e) => e.id !== expenseId);
+  notify();
+}
+
+// ----- CRUD: Settings -----
+export async function saveSettings(settings: any) {
+  const userId = await requireUserId();
+  const payload = settingsToDb(userId, settings);
+
+  const { data, error } = await supabase
+    .from("ll_user_settings")
+    .upsert(payload, { onConflict: "user_id" })
+    .select("*")
+    .single();
+
+  if (error) throw error;
+
+  settingsCache = settingsFromDb(data);
+  notify();
+  return settingsCache;
+}
+
