@@ -4,13 +4,24 @@
     <meta charset="utf-8" />
     <title>Loop Ledger</title>
     <script>
-      // GitHub Pages SPA fallback
-      // Preserve the path and redirect back to index.html with the path in the querystring
+      // SPA fallback for GitHub Pages + Custom Domain
+      // - On GitHub Pages (msberryman.github.io): redirect into /loop-ledger-v2
+      // - On custom domain (loopledger.app): redirect to /
       (function () {
         var l = window.location;
-        var repo = "/loop-ledger-v2";
-        var path = l.pathname.startsWith(repo) ? l.pathname.slice(repo.length) : l.pathname;
-        l.replace(repo + "/?p=" + encodeURIComponent(path + l.search + l.hash));
+        var isGithubPages = l.hostname.endsWith("github.io");
+        var repo = isGithubPages ? "/loop-ledger-v2" : "";
+
+        // Determine the app-relative path (strip repo prefix if present)
+        var path = l.pathname;
+        if (repo && path.startsWith(repo)) path = path.slice(repo.length);
+        if (!path.startsWith("/")) path = "/" + path;
+
+        // Prevent infinite loops if we're already on the fallback URL
+        if (l.search && l.search.indexOf("p=") !== -1) return;
+
+        // Redirect to index with preserved original path in querystring
+        l.replace((repo || "") + "/?p=" + encodeURIComponent(path + l.search + l.hash));
       })();
     </script>
   </head>

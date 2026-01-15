@@ -4,7 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import AppShell from "./AppShell";
 import "./index.css";
 
-const basename = import.meta.env.PROD ? "/loop-ledger-v2" : "";
+const isGithubPages = window.location.hostname.endsWith("github.io");
+const basename = import.meta.env.PROD && isGithubPages ? "/loop-ledger-v2" : "";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
