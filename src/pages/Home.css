@@ -175,3 +175,152 @@
   }
 }
 
+/* -------------------------------------------------------------------------- */
+/* Mileage prompt + assurance (Home-only UI)                                   */
+/* -------------------------------------------------------------------------- */
+
+.mileage-status {
+  width: 100%;
+  max-width: 520px;
+  margin: 0 auto 14px;
+  box-sizing: border-box;
+}
+
+/* Banner matches the stat-box look: subtle border, rounded, calm */
+.mileage-banner {
+  width: 100%;
+  box-sizing: border-box;
+
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 14px;
+
+  padding: 12px 14px;
+}
+
+.mileage-banner__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mileage-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mileage-banner__title {
+  font-size: 13px;
+  font-weight: 750;
+  letter-spacing: 0.2px;
+}
+
+.mileage-banner__subtitle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.2;
+}
+
+.mileage-banner__actions {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.mileage-banner__btn {
+  appearance: none;
+  -webkit-appearance: none;
+
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+
+  transition: background 160ms ease, border-color 160ms ease, transform 120ms ease;
+  white-space: nowrap;
+}
+
+.mileage-banner__btn:hover {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.mileage-banner__btn:active {
+  transform: scale(0.99);
+}
+
+.mileage-banner__btn--primary {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.26);
+}
+
+.mileage-banner__btn--primary:hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.32);
+}
+
+.mileage-banner__btn--ghost {
+  background: transparent;
+}
+
+/* Assurance: small, confident, not noisy */
+.mileage-assurance {
+  width: 100%;
+  box-sizing: border-box;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+
+  padding: 8px 12px;
+
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+
+  font-size: 12px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.mileage-assurance__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.75);
+  display: inline-block;
+}
+
+/* Mobile: stack the banner content cleanly */
+@media (max-width: 520px) {
+  .mileage-status {
+    margin-bottom: 16px;
+  }
+
+  .mileage-banner__row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .mileage-banner__actions {
+    width: 100%;
+  }
+
+  .mileage-banner__btn {
+    flex: 1;
+    width: 100%;
+    text-align: center;
+  }
+}
+

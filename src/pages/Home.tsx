@@ -11,6 +11,8 @@ import "./Home.css";
 
 type FilterKey = "7D" | "14D" | "30D" | "MTD" | "YTD" | "ALL";
 
+const MILEAGE_BANNER_DISMISS_KEY = "ll:dismiss_mileage_prompt";
+
 export default function HomePage() {
   const navigate = useNavigate();
 
@@ -19,6 +21,30 @@ export default function HomePage() {
   const [settings, setSettings] = useState<any>(null);
 
   const [filter, setFilter] = useState<FilterKey>("14D");
+
+// ---------- UI: mileage prompt + assurance (no math/logic changes) ----------
+const [dismissMileagePrompt, setDismissMileagePrompt] = useState(false);
+
+// read once on mount
+useEffect(() => {
+  try {
+    setDismissMileagePrompt(localStorage.getItem(MILEAGE_BANNER_DISMISS_KEY) === "1");
+  } catch {
+    // no-op (private mode / blocked storage)
+  }
+}, []);
+
+const hasHomeAddress = Boolean(String(settings?.homeAddress || "").trim());
+const showMileagePrompt = !hasHomeAddress && !dismissMileagePrompt;
+
+function handleDismissMileagePrompt() {
+  setDismissMileagePrompt(true);
+  try {
+    localStorage.setItem(MILEAGE_BANNER_DISMISS_KEY, "1");
+  } catch {
+    // no-op
+  }
+}
 
   // ---------- LOAD DATA ----------
  useEffect(() => {
@@ -119,6 +145,45 @@ export default function HomePage() {
   return (
     <div className="home-container">
       <h2 className="home-title">Loop Ledger</h2>
+
+    {/* Mileage prompt / assurance (pure UI) */}
+    <div className="mileage-status">
+      {showMileagePrompt ? (
+        <div className="mileage-banner" role="status" aria-live="polite">
+          <div className="mileage-banner__row">
+            <div className="mileage-banner__text">
+              <span className="mileage-banner__title">Mileage not enabled</span>
+              <span className="mileage-banner__subtitle">
+                To auto-calculate mileage expenses, enter your home address in Settings.
+              </span>
+            </div>
+
+            <div className="mileage-banner__actions">
+              <button
+                type="button"
+                className="mileage-banner__btn mileage-banner__btn--primary"
+                onClick={() => navigate("/settings")}
+              >
+                Go to Settings
+              </button>
+
+              <button
+                type="button"
+                className="mileage-banner__btn mileage-banner__btn--ghost"
+                onClick={handleDismissMileagePrompt}
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : hasHomeAddress ? (
+        <div className="mileage-assurance" role="status" aria-live="polite">
+          <span className="mileage-assurance__dot" aria-hidden="true" />
+          Mileage enabled • Home address saved
+        </div>
+      ) : null}
+    </div>
 
       <div className="date-toggle">
         {(["7D", "14D", "30D", "MTD", "YTD", "ALL"] as FilterKey[]).map((key) => (
