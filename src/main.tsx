@@ -4,7 +4,8 @@ import { BrowserRouter } from "react-router-dom";
 import AppShell from "./AppShell";
 import "./index.css";
 
-const basename = import.meta.env.BASE_URL;
+const rawBase = import.meta.env.BASE_URL;
+const basename = rawBase === "./" ? "/" : rawBase;
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
