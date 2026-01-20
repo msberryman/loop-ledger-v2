@@ -74,10 +74,11 @@ export default function Settings() {
   const navigate = useNavigate();
   const [address, setAddress] = useState("");
   const [placeId, setPlaceId] = useState<string | null>(null);
-const [mileageRate, setMileageRate] = useState("0.67");
+  const [mileageRate, setMileageRate] = useState("0.67");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const [addressError, setAddressError] = useState<string | null>(null);
 
 // Load settings from Supabase (via storage cache)
 useEffect(() => {
@@ -108,11 +109,19 @@ useEffect(() => {
 
   // Wire up autocomplete to update address + placeId
   usePlacesAutocomplete(inputRef, (text, pid) => {
-    setAddress(text);
-    setPlaceId(pid ?? null);
-  });
+  setAddress(text);
+  setPlaceId(pid ?? null);
+  setAddressError(null);
+});
 
   async function handleSave() {
+  if (!address || !placeId) {
+    setAddressError(
+      "Please select a full address from the suggestions list."
+    );
+    return;
+  }
+
   setSaving(true);
   try {
     await saveSettings({
@@ -121,8 +130,8 @@ useEffect(() => {
       mileageRate: mileageRate,
     });
 
-    // refresh caches so Home/Loops use the new settings immediately
     await refreshAll();
+    navigate("/home", { replace: true });
   } catch (err) {
     console.error("Save settings failed:", err);
     alert("Failed to save settings. Please try again.");
@@ -210,6 +219,12 @@ useEffect(() => {
                   outline: "none",
                 }}
               />
+
+{addressError && (
+  <div style={{ color: "#ff6b6b", fontSize: 13 }}>
+    {addressError}
+  </div>
+)}
 
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <Button

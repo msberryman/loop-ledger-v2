@@ -11,8 +11,6 @@ import "./Home.css";
 
 type FilterKey = "7D" | "14D" | "30D" | "MTD" | "YTD" | "ALL";
 
-const MILEAGE_BANNER_DISMISS_KEY = "ll:dismiss_mileage_prompt";
-
 export default function HomePage() {
   const navigate = useNavigate();
 
@@ -22,54 +20,32 @@ export default function HomePage() {
 
   const [filter, setFilter] = useState<FilterKey>("14D");
 
-// ---------- UI: mileage prompt + assurance (no math/logic changes) ----------
-const [dismissMileagePrompt, setDismissMileagePrompt] = useState(false);
-
-// read once on mount
-useEffect(() => {
-  try {
-    setDismissMileagePrompt(localStorage.getItem(MILEAGE_BANNER_DISMISS_KEY) === "1");
-  } catch {
-    // no-op (private mode / blocked storage)
-  }
-}, []);
-
-const hasHomeAddress = Boolean(String(settings?.homeAddress || "").trim());
-const showMileagePrompt = !hasHomeAddress && !dismissMileagePrompt;
-
-function handleDismissMileagePrompt() {
-  setDismissMileagePrompt(true);
-  try {
-    localStorage.setItem(MILEAGE_BANNER_DISMISS_KEY, "1");
-  } catch {
-    // no-op
-  }
-}
+  const hasHomeAddress = Boolean(String(settings?.homeAddress || "").trim());
 
   // ---------- LOAD DATA ----------
- useEffect(() => {
-  // load from cache first
-  setLoops(getLoops());
-  setExpenses(getExpenses());
-  setSettings(getSettings());
-
-  // then pull from Supabase
-  refreshAll().catch((e) => console.error("refreshAll failed:", e));
-
-  const unsub = subscribe(() => {
+  useEffect(() => {
+    // load from cache first
     setLoops(getLoops());
     setExpenses(getExpenses());
     setSettings(getSettings());
-  });
 
-  return () => {
-    try {
-      unsub?.();
-    } catch {
-      // no-op
-    }
-  };
-}, []);
+    // then pull from Supabase
+    refreshAll().catch((e) => console.error("refreshAll failed:", e));
+
+    const unsub = subscribe(() => {
+      setLoops(getLoops());
+      setExpenses(getExpenses());
+      setSettings(getSettings());
+    });
+
+    return () => {
+      try {
+        unsub?.();
+      } catch {
+        // no-op
+      }
+    };
+  }, []);
 
   // ---------- RANGE START ----------
   const rangeStart = useMemo(() => {
@@ -77,16 +53,10 @@ function handleDismissMileagePrompt() {
 
     if (filter === "ALL") return new Date(0);
 
-    if (filter === "YTD") {
-      return new Date(now.getFullYear(), 0, 1);
-    }
+    if (filter === "YTD") return new Date(now.getFullYear(), 0, 1);
+    if (filter === "MTD") return new Date(now.getFullYear(), now.getMonth(), 1);
 
-    if (filter === "MTD") {
-      return new Date(now.getFullYear(), now.getMonth(), 1);
-    }
-
-    const days =
-      filter === "7D" ? 7 : filter === "14D" ? 14 : filter === "30D" ? 30 : 14;
+    const days = filter === "7D" ? 7 : filter === "14D" ? 14 : filter === "30D" ? 30 : 14;
 
     const d = new Date(now);
     d.setDate(d.getDate() - days);
@@ -116,7 +86,7 @@ function handleDismissMileagePrompt() {
     }, 0);
   }, [filteredLoops]);
 
-  // ---------- EXPENSES (user-entered expenses ONLY) ----------
+  // ---------- EXPENSES ----------
   const filteredExpenses = useMemo(() => {
     if (filter === "ALL") return expenses;
     return expenses.filter((e: any) => {
@@ -141,49 +111,42 @@ function handleDismissMileagePrompt() {
 
   const totalExpenses = manualExpensesTotal + mileageTotal;
 
-  // ---------- UI ONLY ----------
   return (
     <div className="home-container">
       <h2 className="home-title">Loop Ledger</h2>
 
-    {/* Mileage prompt / assurance (pure UI) */}
-    <div className="mileage-status">
-      {showMileagePrompt ? (
-        <div className="mileage-banner" role="status" aria-live="polite">
-          <div className="mileage-banner__row">
-            <div className="mileage-banner__text">
-              <span className="mileage-banner__title">Mileage not enabled</span>
-              <span className="mileage-banner__subtitle">
-                To auto-calculate mileage expenses, enter your home address in Settings.
-              </span>
-            </div>
+      {/* Address requirement banner */}
+      <div className="mileage-status">
+        {!hasHomeAddress ? (
+          <div className="mileage-banner" role="alert">
+            <div className="mileage-banner__row">
+              <div className="mileage-banner__text">
+                <span className="mileage-banner__title">
+                  Address required to log loops
+                </span>
+                <span className="mileage-banner__subtitle">
+                  Enter your home address in Settings to enable mileage and log loops.
+                </span>
+              </div>
 
-            <div className="mileage-banner__actions">
-              <button
-                type="button"
-                className="mileage-banner__btn mileage-banner__btn--primary"
-                onClick={() => navigate("/settings")}
-              >
-                Go to Settings
-              </button>
-
-              <button
-                type="button"
-                className="mileage-banner__btn mileage-banner__btn--ghost"
-                onClick={handleDismissMileagePrompt}
-              >
-                Dismiss
-              </button>
+              <div className="mileage-banner__actions">
+                <button
+                  type="button"
+                  className="mileage-banner__btn mileage-banner__btn--primary"
+                  onClick={() => navigate("/settings")}
+                >
+                  Go to Settings
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      ) : hasHomeAddress ? (
-        <div className="mileage-assurance" role="status" aria-live="polite">
-          <span className="mileage-assurance__dot" aria-hidden="true" />
-          Mileage enabled • Home address saved
-        </div>
-      ) : null}
-    </div>
+        ) : (
+          <div className="mileage-assurance" role="status">
+            <span className="mileage-assurance__dot" aria-hidden="true" />
+            Mileage enabled • Home address saved
+          </div>
+        )}
+      </div>
 
       <div className="date-toggle">
         {(["7D", "14D", "30D", "MTD", "YTD", "ALL"] as FilterKey[]).map((key) => (
@@ -220,7 +183,12 @@ function handleDismissMileagePrompt() {
       </div>
 
       <div className="home-buttons">
-        <button onClick={() => navigate("/loops")} type="button">
+        <button
+          onClick={() => navigate("/loops")}
+          type="button"
+          disabled={!hasHomeAddress}
+          title={!hasHomeAddress ? "Add your home address in Settings first" : ""}
+        >
           Add Loop
         </button>
         <button onClick={() => navigate("/expenses")} type="button">
@@ -230,4 +198,3 @@ function handleDismissMileagePrompt() {
     </div>
   );
 }
-
