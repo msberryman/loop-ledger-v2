@@ -79,6 +79,10 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [addressError, setAddressError] = useState<string | null>(null);
+  const [defaultBagFeeSingle, setDefaultBagFeeSingle] = useState("");
+  const [defaultBagFeeDouble, setDefaultBagFeeDouble] = useState("");
+  const [defaultBagFeeForecaddie, setDefaultBagFeeForecaddie] = useState("");
+
 
 // Load settings from Supabase (via storage cache)
 useEffect(() => {
@@ -94,6 +98,9 @@ useEffect(() => {
       setAddress(s?.homeAddress || "");
       setPlaceId(s?.homePlaceId || null);
       setMileageRate(String(s?.mileageRate ?? "0.67"));
+      setDefaultBagFeeSingle(s?.defaultBagFeeSingle != null ? String(s.defaultBagFeeSingle) : "");
+      setDefaultBagFeeDouble(s?.defaultBagFeeDouble != null ? String(s.defaultBagFeeDouble) : "");
+      setDefaultBagFeeForecaddie(s?.defaultBagFeeForecaddie != null ? String(s.defaultBagFeeForecaddie) : "");
     } catch (err) {
       console.error("Failed to load settings:", err);
     } finally {
@@ -128,6 +135,9 @@ useEffect(() => {
       homeAddress: address,
       homePlaceId: placeId,
       mileageRate: mileageRate,
+      defaultBagFeeSingle: defaultBagFeeSingle === "" ? null : Number(defaultBagFeeSingle),
+      defaultBagFeeDouble: defaultBagFeeDouble === "" ? null : Number(defaultBagFeeDouble),
+      defaultBagFeeForecaddie: defaultBagFeeForecaddie === "" ? null : Number(defaultBagFeeForecaddie),
     });
 
     await refreshAll();
@@ -225,6 +235,80 @@ useEffect(() => {
     {addressError}
   </div>
 )}
+
+<div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+  <div style={{ fontSize: 14, fontWeight: 600 }}>Default bag fees</div>
+
+  <div style={{ display: "grid", gap: 6 }}>
+    <label style={{ fontSize: 12, opacity: 0.8 }}>Single Bag</label>
+    <input
+      type="text"
+      inputMode="decimal"
+      value={defaultBagFeeSingle}
+      onChange={(e) => setDefaultBagFeeSingle(e.target.value.replace(/[^\d.]/g, ""))}
+      placeholder="e.g., $60"
+      disabled={loading}
+      style={{
+        display: "block",
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid #232931",
+        background: "transparent",
+        color: "inherit",
+        outline: "none",
+      }}
+    />
+  </div>
+
+  <div style={{ display: "grid", gap: 6 }}>
+    <label style={{ fontSize: 12, opacity: 0.8 }}>Double Bag</label>
+    <input
+      type="text"
+      inputMode="decimal"
+      value={defaultBagFeeDouble}
+      onChange={(e) => setDefaultBagFeeDouble(e.target.value.replace(/[^\d.]/g, ""))}
+      placeholder="e.g., $80"
+      disabled={loading}
+      style={{
+        display: "block",
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid #232931",
+        background: "transparent",
+        color: "inherit",
+        outline: "none",
+      }}
+    />
+  </div>
+
+  <div style={{ display: "grid", gap: 6 }}>
+    <label style={{ fontSize: 12, opacity: 0.8 }}>Forecaddie</label>
+    <input
+      type="text"
+      inputMode="decimal"
+      value={defaultBagFeeForecaddie}
+      onChange={(e) => setDefaultBagFeeForecaddie(e.target.value.replace(/[^\d.]/g, ""))}
+      placeholder="e.g., $40"
+      disabled={loading}
+      style={{
+        display: "block",
+        width: "100%",
+        padding: "10px 12px",
+        borderRadius: 10,
+        border: "1px solid #232931",
+        background: "transparent",
+        color: "inherit",
+        outline: "none",
+      }}
+    />
+  </div>
+
+  <div style={{ fontSize: 12, opacity: 0.7 }}>
+    Leave blank if you don’t want a default.
+  </div>
+</div>
 
               <div style={{ display: "flex", justifyContent: "flex-end" }}>
                 <Button
