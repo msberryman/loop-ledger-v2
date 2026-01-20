@@ -131,6 +131,21 @@ function settingsFromDb(r: any) {
     homeAddress: r.home_address ?? "",
     homePlaceId: r.home_place_id ?? "",
     mileageRate: Number(r.mileage_rate) || 0.67,
+
+    // NEW: default bag fees
+    defaultBagFeeSingle:
+      r.default_bag_fee_single === null || r.default_bag_fee_single === undefined
+        ? null
+        : Number(r.default_bag_fee_single),
+    defaultBagFeeDouble:
+      r.default_bag_fee_double === null || r.default_bag_fee_double === undefined
+        ? null
+        : Number(r.default_bag_fee_double),
+    defaultBagFeeForecaddie:
+      r.default_bag_fee_forecaddie === null || r.default_bag_fee_forecaddie === undefined
+        ? null
+        : Number(r.default_bag_fee_forecaddie),
+
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -142,6 +157,21 @@ function settingsToDb(userId: string, s: any) {
     home_address: s?.homeAddress || null,
     home_place_id: s?.homePlaceId || null,
     mileage_rate: Number(s?.mileageRate) || 0.67,
+
+    // NEW: default bag fees (nullable)
+    default_bag_fee_single:
+      s?.defaultBagFeeSingle === null || s?.defaultBagFeeSingle === undefined || s?.defaultBagFeeSingle === ""
+        ? null
+        : Number(s.defaultBagFeeSingle),
+    default_bag_fee_double:
+      s?.defaultBagFeeDouble === null || s?.defaultBagFeeDouble === undefined || s?.defaultBagFeeDouble === ""
+        ? null
+        : Number(s.defaultBagFeeDouble),
+    default_bag_fee_forecaddie:
+      s?.defaultBagFeeForecaddie === null || s?.defaultBagFeeForecaddie === undefined || s?.defaultBagFeeForecaddie === ""
+        ? null
+        : Number(s.defaultBagFeeForecaddie),
+
     updated_at: new Date().toISOString(),
   };
 }
