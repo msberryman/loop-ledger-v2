@@ -3,18 +3,17 @@
   <head>
     <meta charset="utf-8" />
     <title>Loop Ledger</title>
+    <script>
+      // SPA fallback for GitHub Pages + custom domain.
+      // Redirect any 404 route back to "/" and let React Router handle it.
+      (function () {
+        var l = window.location;
+        // Preserve the original path so the app can route after load (optional)
+        var redirect = "/?p=" + encodeURIComponent(l.pathname + l.search + l.hash);
+        l.replace(redirect);
+      })();
+    </script>
   </head>
-  <body>
-    <!--
-      SPA fallback script temporarily disabled.
-
-      Reason:
-      - Vite base is now relative (base: "./")
-      - React Router now uses import.meta.env.BASE_URL
-      - Local preview uses `serve --single`
-      - This redirect script conflicts with clean routing and causes blank renders
-
-      We will reintroduce a simplified fallback later if needed.
-    -->
-  </body>
+  <body></body>
 </html>
+
