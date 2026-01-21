@@ -130,6 +130,7 @@ export default function LoopsPage() {
   });
 
 const [bagFeeStr, setBagFeeStr] = useState("");
+const [bagFeeTouched, setBagFeeTouched] = useState(false);
 const [cashTipStr, setCashTipStr] = useState("");
 const [digitalTipStr, setDigitalTipStr] = useState("");
 const [preGratStr, setPreGratStr] = useState("");
@@ -161,9 +162,12 @@ const [preGratStr, setPreGratStr] = useState("");
   // then fetch from Supabase into cache
   refreshAll()
     .then(() => {
-      setLoops(getLoops() as any);
-      setSettings(getSettings());
-    })
+  setLoops(getLoops() as any);
+  setSettings(getSettings());
+
+  // auto-fill default bag fee for the currently selected type (Single)
+  applyDefaultBagFee("Single");
+})
     .catch((e) => console.error("refreshAll failed:", e));
 }, []);
 
@@ -211,6 +215,22 @@ const [preGratStr, setPreGratStr] = useState("");
   }, []);
 
   const update = (patch: Partial<Loop>) => setForm((p) => ({ ...p, ...patch }));
+  const applyDefaultBagFee = (loopType: LoopType) => {
+  // Don't overwrite user edits
+  if (bagFeeTouched) return;
+
+  const s = getSettings();
+  const defaults: Record<LoopType, any> = {
+    Single: s?.defaultBagFeeSingle,
+    Double: s?.defaultBagFeeDouble,
+    Forecaddie: s?.defaultBagFeeForecaddie,
+  };
+
+  const v = defaults[loopType];
+  if (v === null || v === undefined || v === "") return;
+
+  setBagFeeStr(String(v));
+};
 
   const resetForm = () => {
     setForm({
@@ -230,6 +250,8 @@ const [preGratStr, setPreGratStr] = useState("");
       mileage_cost: 0,
     });
   setBagFeeStr("");
+  setBagFeeTouched(false);
+  applyDefaultBagFee("Single");
   setCashTipStr("");
   setDigitalTipStr("");
   setPreGratStr("");
@@ -301,6 +323,7 @@ const [preGratStr, setPreGratStr] = useState("");
       endTime: l.endTime || "",
     });
   setBagFeeStr(l.bagFee ? String(l.bagFee) : "");
+  setBagFeeTouched(true);
   setCashTipStr(l.cashTip ? String(l.cashTip) : "");
   setDigitalTipStr(l.digitalTip ? String(l.digitalTip) : "");
   setPreGratStr(l.preGrat ? String(l.preGrat) : "");
@@ -354,10 +377,14 @@ const [preGratStr, setPreGratStr] = useState("");
             <div className="ll-field">
               <div className="ll-label">Caddie Type</div>
               <select
-                value={form.loopType || "Single"}
-                onChange={(e) => update({ loopType: e.target.value as any })}
-                className="ll-select"
-              >
+  value={form.loopType || "Single"}
+  onChange={(e) => {
+    const nextType = e.target.value as LoopType;
+    update({ loopType: nextType });
+    applyDefaultBagFee(nextType);
+  }}
+  className="ll-select"
+>
                 <option value="Single">Single</option>
                 <option value="Double">Double</option>
                 <option value="Forecaddie">Forecaddie</option>
@@ -377,7 +404,10 @@ const [preGratStr, setPreGratStr] = useState("");
               className="ll-moneyInput"
               value={bagFeeStr}
               placeholder="0"
-              onChange={(e) => setBagFeeStr(sanitizeMoneyInput(e.target.value))}
+              onChange={(e) => {
+  setBagFeeTouched(true);
+  setBagFeeStr(sanitizeMoneyInput(e.target.value));
+}}
             />
           </div>
         </div>
