@@ -3,6 +3,14 @@ import "./Insights.css";
 import { getLoops, refreshAll, subscribe } from "../lib/storage";
 
 type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
+type LoopTypeKey = "single" | "double" | "forecaddie" | "all";
+
+const loopTypeOptions: { key: LoopTypeKey; label: string }[] = [
+  { key: "single", label: "Single Bag" },
+  { key: "double", label: "Double Bag" },
+  { key: "forecaddie", label: "Forecaddie" },
+  { key: "all", label: "ALL" },
+];
 
 const rangeOptions: { key: RangeKey; label: string }[] = [
   { key: "7d", label: "7D" },
@@ -48,10 +56,13 @@ function timeToMinutes(t?: string): number | null {
 // consumer-friendly duration: "4h 53m" or "53m"
 function fmtDuration(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return "0m";
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
-  if (h <= 0) return `${m}m`;
-  return `${h}h ${m}m`;
+
+  const totalMinutes = Math.round(mins);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours <= 0) return `${minutes}m`;
+  return `${hours}h ${minutes}m`;
 }
 
 const moneyFmt = new Intl.NumberFormat("en-US", {
@@ -68,6 +79,7 @@ function safeNum(v: any): number {
 
 export default function Insights() {
   const [range, setRange] = useState<RangeKey>("30d");
+  const [loopType, setLoopType] = useState<LoopTypeKey>("all");
   const [loops, setLoops] = useState<any[]>([]);
 
   useEffect(() => {
@@ -89,25 +101,37 @@ export default function Insights() {
 }, []);
 
   const filteredLoops = useMemo(() => {
-    const now = new Date();
-    const todayStart = startOfDay(now);
+  const now = new Date();
+  const todayStart = startOfDay(now);
 
-    let start: Date | null = null;
+  let start: Date | null = null;
 
-    if (range === "7d") start = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
-    if (range === "14d") start = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
-    if (range === "30d") start = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
-    if (range === "mtd") start = startOfMonth(now);
-    if (range === "ytd") start = startOfYear(now);
+  if (range === "7d") start = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+  if (range === "14d") start = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
+  if (range === "30d") start = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
+  if (range === "mtd") start = startOfMonth(now);
+  if (range === "ytd") start = startOfYear(now);
 
-    if (!start) return loops;
+  // 1) Date filter (existing behavior)
+  const byDate = !start
+    ? loops
+    : loops.filter((l) => {
+        const d = toDate(l.date);
+        if (!d) return false;
+        return d >= startOfDay(start);
+      });
 
-    return loops.filter((l) => {
-      const d = toDate(l.date);
-      if (!d) return false;
-      return d >= startOfDay(start);
-    });
-  }, [loops, range]);
+  // 2) Loop-type filter (NEW)
+  if (loopType === "all") return byDate;
+
+  return byDate.filter((l: any) => {
+    const t = String(l.loopType || l.loop_type || "").toLowerCase();
+    if (loopType === "single") return t.includes("single");
+    if (loopType === "double") return t.includes("double");
+    if (loopType === "forecaddie") return t.includes("fore");
+    return true;
+  });
+}, [loops, range, loopType]);
 
   const totals = useMemo(() => {
     let bagFees = 0;
@@ -238,21 +262,38 @@ export default function Insights() {
   return (
     <div className="insights-page" style={{ padding: "18px 16px 28px", boxSizing: "border-box" }}>
       <div className="insights-header">
-        <h1 className="insights-title">Insights</h1>
+  <h1 className="insights-title">Insights</h1>
 
-        <div className="insights-filters">
-          {rangeOptions.map((r) => (
-            <button
-              key={r.key}
-              className={`insights-filter-pill ${range === r.key ? "active" : ""}`}
-              onClick={() => setRange(r.key)}
-              type="button"
-            >
-              {r.label}
-            </button>
-          ))}
-        </div>
-      </div>
+  <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+    {/* Date filter row */}
+    <div className="insights-filters">
+      {rangeOptions.map((r) => (
+        <button
+          key={r.key}
+          className={`insights-filter-pill ${range === r.key ? "active" : ""}`}
+          onClick={() => setRange(r.key)}
+          type="button"
+        >
+          {r.label}
+        </button>
+      ))}
+    </div>
+
+    {/* Loop type filter row */}
+    <div className="insights-filters">
+      {loopTypeOptions.map((t) => (
+        <button
+          key={t.key}
+          className={`insights-filter-pill ${loopType === t.key ? "active" : ""}`}
+          onClick={() => setLoopType(t.key)}
+          type="button"
+        >
+          {t.label}
+        </button>
+      ))}
+    </div>
+  </div>
+</div>
 
       <div style={maxWrapStyle}>
         {/* TOTAL INCOME (was Range Summary) */}
