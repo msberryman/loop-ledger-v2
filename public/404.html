@@ -3,27 +3,18 @@
   <head>
     <meta charset="utf-8" />
     <title>Loop Ledger</title>
-    <script>
-      // SPA fallback for GitHub Pages + Custom Domain
-      // - On GitHub Pages (msberryman.github.io): redirect into /loop-ledger-v2
-      // - On custom domain (loopledger.app): redirect to /
-      (function () {
-        var l = window.location;
-        var isGithubPages = l.hostname.endsWith("github.io");
-        var repo = isGithubPages ? "/loop-ledger-v2" : "";
-
-        // Determine the app-relative path (strip repo prefix if present)
-        var path = l.pathname;
-        if (repo && path.startsWith(repo)) path = path.slice(repo.length);
-        if (!path.startsWith("/")) path = "/" + path;
-
-        // Prevent infinite loops if we're already on the fallback URL
-        if (l.search && l.search.indexOf("p=") !== -1) return;
-
-        // Redirect to index with preserved original path in querystring
-        l.replace((repo || "") + "/?p=" + encodeURIComponent(path + l.search + l.hash));
-      })();
-    </script>
   </head>
-  <body></body>
+  <body>
+    <!--
+      SPA fallback script temporarily disabled.
+
+      Reason:
+      - Vite base is now relative (base: "./")
+      - React Router now uses import.meta.env.BASE_URL
+      - Local preview uses `serve --single`
+      - This redirect script conflicts with clean routing and causes blank renders
+
+      We will reintroduce a simplified fallback later if needed.
+    -->
+  </body>
 </html>
