@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import "./Income.css";
 import { getLoops, refreshAll, subscribe } from "../lib/storage";
 
+import { PageShell, PageHeader, PillRail, Card, ContentWidth } from "../ui-kit";
+
 /* ---------------- Types ---------------- */
 type Loop = {
   date: string;
@@ -72,17 +74,12 @@ function normalizeLoop(loop: Partial<Loop> & Record<string, any>) {
 
   // Income fields (support multiple historical key names)
   const bagFee = num(loop.bagFee ?? loop.bag_fee ?? loop.bagfee ?? loop.bag ?? 0);
-  const pregrat = num(loop.pregrat ?? loop.preGrat ?? loop.pre_grat ?? loop.pregrat_amount ?? 0);
+  const pregrat = num(
+    loop.pregrat ?? loop.preGrat ?? loop.pre_grat ?? loop.pregrat_amount ?? 0
+  );
 
   // Tips: newest schema uses cashTip/digitalTip; older schema used tipCash/tipDigital
-  const cash = num(
-    loop.cashTip ??
-      loop.cash_tip ??
-      loop.tipCash ??
-      loop.tip_cash ??
-      loop.cash ??
-      0
-  );
+  const cash = num(loop.cashTip ?? loop.cash_tip ?? loop.tipCash ?? loop.tip_cash ?? loop.cash ?? 0);
   const digital = num(
     loop.digitalTip ??
       loop.digital_tip ??
@@ -103,8 +100,6 @@ function normalizeLoop(loop: Partial<Loop> & Record<string, any>) {
   };
 }
 type NLoop = ReturnType<typeof normalizeLoop>;
-
-/* ---------------- Data source ---------------- */
 
 /* ---------------- Range & math ---------------- */
 type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
@@ -163,9 +158,9 @@ function pct(part: number, whole: number): string {
 
 /* ---------------- Colors (UI only) ---------------- */
 const COLORS = {
-  bag: "#F59E0B",     // amber
-  pre: "#A855F7",     // violet
-  cash: "#22C55E",    // green (dominant)
+  bag: "#F59E0B", // amber
+  pre: "#A855F7", // violet
+  cash: "#22C55E", // green (dominant)
   digital: "#38BDF8", // cyan
 } as const;
 
@@ -264,28 +259,27 @@ function DonutSVG({
 /* ---------------- Page ---------------- */
 export default function IncomePage() {
   const [allLoops, setAllLoops] = useState<NLoop[]>([]);
-
-useEffect(() => {
-  // load cache immediately
-  setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
-
-  // then refresh from Supabase
-  refreshAll()
-    .then(() => setAllLoops(getLoops().map((l: any) => normalizeLoop(l))))
-    .catch((e) => console.error("refreshAll failed:", e));
-
-  const unsub = subscribe(() => {
-    setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
-  });
-
-  return () => {
-    try {
-      unsub?.();
-    } catch {}
-  };
-}, []);
-
   const [range, setRange] = useState<RangeKey>("mtd");
+
+  useEffect(() => {
+    // load cache immediately
+    setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
+
+    // then refresh from Supabase
+    refreshAll()
+      .then(() => setAllLoops(getLoops().map((l: any) => normalizeLoop(l))))
+      .catch((e) => console.error("refreshAll failed:", e));
+
+    const unsub = subscribe(() => {
+      setAllLoops(getLoops().map((l: any) => normalizeLoop(l)));
+    });
+
+    return () => {
+      try {
+        unsub?.();
+      } catch {}
+    };
+  }, []);
 
   const loops = useMemo(() => filterLoopsByRange(allLoops, range), [allLoops, range]);
   const sum = useMemo(() => summarize(loops), [loops]);
@@ -302,48 +296,37 @@ useEffect(() => {
       }));
   }, [loops]);
 
-  const cardStyle: React.CSSProperties = {
-    width: "min(720px, calc(100% - 32px))",
-    margin: "0 auto",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: 16,
-    padding: 18,
-    background: "rgba(0,0,0,0.25)",
-    boxShadow: "0 8px 30px rgba(0,0,0,0.35)",
-  };
-
   return (
-    <div style={{ padding: "18px 16px 28px", color: "white" }}>
-      {/* Header + Filters (styled via Income.css) */}
-      <div className="income-header">
-        <h1 className="income-title">Income</h1>
-
-        <div className="income-filters" role="tablist" aria-label="Income range filter">
-          {RANGE_KEYS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              className={`income-filter-pill ${range === k ? "active" : ""}`}
-              onClick={() => setRange(k)}
-            >
-              {LABELS[k]}
-            </button>
-          ))}
-        </div>
-      </div>
+    <PageShell>
+      <ContentWidth>
+        <PageHeader
+          title="Income"
+          right={
+            <PillRail<RangeKey>
+              ariaLabel="Income range filter"
+              options={RANGE_KEYS.map((k) => ({ key: k, label: LABELS[k] }))}
+              value={range}
+              onChange={setRange}
+            />
+          }
+        />
+      </ContentWidth>
 
       {/* Total Income */}
-      <div style={{ ...cardStyle, marginTop: 14 }}>
-        <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>TOTAL INCOME</div>
-        <div style={{ fontSize: 32, fontWeight: 800, marginTop: 6 }}>{formatCurrency(sum.total)}</div>
-        <div style={{ opacity: 0.7, marginTop: 6 }}>{loops.length} loops</div>
-      </div>
+      <ContentWidth style={{ marginTop: 14 }}>
+        <Card>
+          <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>TOTAL INCOME</div>
+          <div style={{ fontSize: 32, fontWeight: 800, marginTop: 6 }}>
+            {formatCurrency(sum.total)}
+          </div>
+          <div style={{ opacity: 0.7, marginTop: 6 }}>{loops.length} loops</div>
+        </Card>
+      </ContentWidth>
 
       {/* Breakdown cards */}
-      <div
+      <ContentWidth
         style={{
-          width: "min(720px, calc(100% - 32px))",
-          margin: "14px auto 0",
+          marginTop: 14,
           display: "grid",
           gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
           gap: 12,
@@ -355,61 +338,56 @@ useEffect(() => {
           { title: "CASH TIPS", value: sum.cash, color: COLORS.cash },
           { title: "DIGITAL TIPS", value: sum.digital, color: COLORS.digital },
         ].map((m) => (
-          <div
-            key={m.title}
-            style={{
-              border: "1px solid rgba(255,255,255,0.12)",
-              borderRadius: 14,
-              padding: 14,
-              background: "rgba(0,0,0,0.18)",
-            }}
-          >
-            <div className="income-metric-title">
+          <Card key={m.title} variant="inner">
+            <div className="ui-metric-title">
               <span>{m.title}</span>
-              <span className="income-color-dot" style={{ backgroundColor: m.color }} />
+              <span className="ui-color-dot" style={{ backgroundColor: m.color }} />
             </div>
 
-            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>{formatCurrency(m.value)}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 6 }}>
+              {formatCurrency(m.value)}
+            </div>
             <div style={{ opacity: 0.65, marginTop: 4 }}>{pct(m.value, sum.total)} of total</div>
-          </div>
+          </Card>
         ))}
-      </div>
+      </ContentWidth>
 
       {/* Donut */}
-      <div style={{ ...cardStyle, marginTop: 14, textAlign: "center" }}>
-        <div style={{ display: "flex", justifyContent: "center" }}>
-          <DonutSVG bag={sum.bag} pre={sum.pre} cash={sum.cash} digital={sum.digital} />
-        </div>
-      </div>
+      <ContentWidth style={{ marginTop: 14 }}>
+        <Card style={{ textAlign: "center" }}>
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <DonutSVG bag={sum.bag} pre={sum.pre} cash={sum.cash} digital={sum.digital} />
+          </div>
+        </Card>
+      </ContentWidth>
 
       {/* Recent Income */}
-      <div style={{ ...cardStyle, marginTop: 14 }}>
-        <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent Income</div>
+      <ContentWidth style={{ marginTop: 14 }}>
+        <Card>
+          <div style={{ fontSize: 14, fontWeight: 800, marginBottom: 10 }}>Recent Income</div>
 
-        {recentIncome.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>No loops in this range yet.</div>
-        ) : (
-          <div style={{ display: "grid", gap: 10 }}>
-            {recentIncome.map((r, idx) => (
-              <div
-                key={`${r.date}-${idx}`}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid rgba(255,255,255,0.10)",
-                  background: "rgba(255,255,255,0.04)",
-                }}
-              >
-                <div style={{ opacity: 0.85 }}>{r.date || "—"}</div>
-                <div style={{ fontWeight: 800 }}>{formatCurrency(r.total)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
+          {recentIncome.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>No loops in this range yet.</div>
+          ) : (
+            <div style={{ display: "grid", gap: 10 }}>
+              {recentIncome.map((r, idx) => (
+                <Card key={`${r.date}-${idx}`} variant="row">
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <div style={{ opacity: 0.85 }}>{r.date || "—"}</div>
+                    <div style={{ fontWeight: 800 }}>{formatCurrency(r.total)}</div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </Card>
+      </ContentWidth>
+    </PageShell>
   );
 }
