@@ -8,11 +8,10 @@ import {
   updateLoopMileage,
 } from "../lib/storage";
 
-import DateRangeChips from "../components/DateRangeChips";
 import { getDateRange, isWithinRange, type DateRangeKey } from "../lib/dateRange";
 import "./Loops.css";
 
-import { PageShell, ContentWidth, Card, Button as UiButton } from "../ui-kit";
+import { PageShell, ContentWidth, Card, Button as UiButton, PillRail } from "../ui-kit";
 
 /* ---------------- Google helpers (same behavior, more reliable init) ---------------- */
 
@@ -108,7 +107,7 @@ async function computeRoundTripMilesFlexible(params: {
   });
 }
 
-/* ---------------- Types & helpers (unchanged) ---------------- */
+/* ---------------- Types & helpers ---------------- */
 
 type LoopType = "Single" | "Double" | "Forecaddie";
 
@@ -176,12 +175,50 @@ export default function LoopsPage() {
   const autocompleteRef = useRef<any>(null);
   const placeListenerRef = useRef<any>(null);
 
-  const [rangeKey, setRangeKey] = useState<DateRangeKey>("7D");
+  // Past Loops filter default: MTD
+  const [rangeKey, setRangeKey] = useState<DateRangeKey>("MTD");
+
+  // Past Loops: expandable/collapsible cards
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Colors match Income KPI dots
+  const COLORS = {
+    bag: "#F59E0B",
+    cash: "#22C55E",
+    digital: "#38BDF8",
+    pre: "#A855F7",
+  } as const;
+
+  const shortCourseName = (s: string) => {
+    const str = String(s || "").trim();
+    if (!str) return "—";
+    const first = str.split(",")[0]?.trim();
+    return first || str;
+  };
+
+  const formatMMDDYYYY = (iso: string) => {
+    const s = String(iso || "").trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split("-");
+      return `${m}-${d}-${y}`;
+    }
+    return s || "—";
+  };
+
+  const moneyShort = (v: number) => `$${Number(v || 0).toFixed(0)}`;
 
   const filteredLoops = useMemo(() => {
     const range = getDateRange(rangeKey);
-    const inRange = (iso: string) =>
-      rangeKey === "ALL" ? true : isWithinRange(iso, range);
+    const inRange = (iso: string) => (rangeKey === "ALL" ? true : isWithinRange(iso, range));
 
     return (loops || [])
       .filter((l) => !l?.date || inRange(l.date))
@@ -203,7 +240,7 @@ export default function LoopsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Autocomplete stays identical
+  // ✅ Autocomplete (reliable init + cleanup)
   useEffect(() => {
     let cancelled = false;
 
@@ -371,7 +408,8 @@ export default function LoopsPage() {
     }
   };
 
-  // UI-only styles
+  /* ---------------- Add Loop UI-only styles ---------------- */
+
   const fieldWrap: React.CSSProperties = {
     display: "grid",
     gap: 8,
@@ -386,7 +424,6 @@ export default function LoopsPage() {
     opacity: 0.75,
   };
 
-  // Normal text/select styling (works fine cross-platform)
   const inputStyle: React.CSSProperties = {
     width: "100%",
     maxWidth: "100%",
@@ -406,7 +443,6 @@ export default function LoopsPage() {
     appearance: "auto",
   };
 
-  // ✅ Native picker shell: wrapper becomes the pill & clips iOS bleed
   const nativeShell: React.CSSProperties = {
     width: "100%",
     maxWidth: "100%",
@@ -416,11 +452,9 @@ export default function LoopsPage() {
     border: "1px solid rgba(255,255,255,0.14)",
     background: "rgba(255,255,255,0.04)",
     overflow: "hidden",
-    // iOS: forces real clipping with border radius
     WebkitMaskImage: "-webkit-radial-gradient(white, black)",
   };
 
-  // ✅ Inner native input becomes transparent/borderless and can’t overflow wrapper
   const nativeInner: React.CSSProperties = {
     width: "100%",
     maxWidth: "100%",
@@ -435,7 +469,6 @@ export default function LoopsPage() {
     padding: "12px 14px",
   };
 
-  // ✅ Skinnier time bubbles, but still native pickers
   const nativeInnerTime: React.CSSProperties = {
     ...nativeInner,
     padding: "10px 8px",
@@ -491,6 +524,42 @@ export default function LoopsPage() {
     lineHeight: 1.05,
   };
 
+  /* ---------------- Past Loops legend sizing (MATCH PILL RAIL WIDTH) ---------------- */
+
+  // Same shrink-to-fit wrapper as the pill rail (so legend width == rail width)
+  const railSizedWrap: React.CSSProperties = {
+    display: "inline-block",
+    width: "fit-content",
+    maxWidth: "100%",
+  };
+
+  const railScaleWrap: React.CSSProperties = {
+    ...railSizedWrap,
+    transform: "scale(0.96)",
+    transformOrigin: "center",
+  };
+
+  const legendRowStyle: React.CSSProperties = {
+    width: "100%",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 12,
+    flexWrap: "nowrap",
+    whiteSpace: "nowrap",
+    fontSize: 12,
+    opacity: 0.78,
+    padding: "0 2px",
+  };
+
+  const legendItemStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    flex: "0 0 auto",
+    whiteSpace: "nowrap",
+  };
+
   return (
     <PageShell>
       <ContentWidth>
@@ -499,6 +568,7 @@ export default function LoopsPage() {
         </h1>
       </ContentWidth>
 
+      {/* ---------------- NEW ADD LOOP ---------------- */}
       <ContentWidth style={{ marginTop: 14 }}>
         <Card>
           <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>ADD LOOP</div>
@@ -670,12 +740,63 @@ export default function LoopsPage() {
         </Card>
       </ContentWidth>
 
-      {/* Everything below (Past Loops) is unchanged */}
+      {/* Divider */}
       <ContentWidth style={{ marginTop: 18 }}>
+        <div
+          style={{
+            height: 1,
+            background: "rgba(255,255,255,0.10)",
+            width: "100%",
+            margin: "6px 0 16px",
+          }}
+        />
+      </ContentWidth>
+
+      {/* ---------------- NEW PAST LOOPS ---------------- */}
+      <ContentWidth>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900 }}>Past Loops</h2>
 
+        {/* Range pills */}
         <div style={{ display: "flex", justifyContent: "center", marginTop: 12, marginBottom: 10 }}>
-          <DateRangeChips value={rangeKey} onChange={setRangeKey} />
+          <div style={railScaleWrap}>
+            <PillRail<DateRangeKey>
+              ariaLabel="Past loops date range filter"
+              options={[
+                { key: "7D", label: "7D" },
+                { key: "14D", label: "14D" },
+                { key: "30D", label: "30D" },
+                { key: "MTD", label: "MTD" },
+                { key: "YTD", label: "YTD" },
+                { key: "ALL", label: "ALL" },
+              ]}
+              value={rangeKey}
+              onChange={setRangeKey}
+            />
+          </div>
+        </div>
+
+        {/* Legend (now same exact width as pill rail; forced single line on mobile) */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={railScaleWrap}>
+            <div className="ll-legend" style={legendRowStyle}>
+              <div className="ll-legend-item" style={legendItemStyle}>
+                <span className="ui-color-dot" style={{ backgroundColor: COLORS.bag }} />
+                <span>Bag Fee</span>
+              </div>
+              <div className="ll-legend-item" style={legendItemStyle}>
+                <span className="ui-color-dot" style={{ backgroundColor: COLORS.cash }} />
+                <span>Cash Tip</span>
+              </div>
+              <div className="ll-legend-item" style={legendItemStyle}>
+                <span className="ui-color-dot" style={{ backgroundColor: COLORS.digital }} />
+                <span>Digital Tip</span>
+              </div>
+              <div className="ll-legend-item" style={legendItemStyle}>
+                <span className="ui-color-dot" style={{ backgroundColor: COLORS.pre }} />
+                <span>Pre-Grat</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {filteredLoops.length === 0 ? (
@@ -683,54 +804,182 @@ export default function LoopsPage() {
         ) : (
           <div style={{ display: "grid", gap: 12 }}>
             {filteredLoops.map((l) => {
-              const total =
-                toNumber(String(l.bagFee)) +
-                toNumber(String(l.cashTip)) +
-                toNumber(String(l.digitalTip)) +
-                toNumber(String(l.preGrat));
+              const bag = toNumber(String(l.bagFee));
+              const cash = toNumber(String(l.cashTip));
+              const digital = toNumber(String(l.digitalTip));
+              const pre = toNumber(String(l.preGrat));
+              const total = bag + cash + digital + pre;
+
+              const isOpen = expandedIds.has(l.id);
 
               return (
                 <Card key={l.id}>
-                  <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-                    <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.2 }}>
-                      {l.course || "—"}
-                    </div>
-                    <div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap" }}>
-                      ${total.toFixed(2)}
-                    </div>
-                  </div>
-
-                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.75 }}>
-                    {l.date || "—"} • {l.loopType || "—"}
-                  </div>
-
-                  <div style={{ marginTop: 10, fontSize: 13, opacity: 0.85, lineHeight: 1.35 }}>
-                    Bag ${toNumber(String(l.bagFee)).toFixed(0)} • Cash $
-                    {toNumber(String(l.cashTip)).toFixed(0)} • Digital $
-                    {toNumber(String(l.digitalTip)).toFixed(0)} • Pre $
-                    {toNumber(String(l.preGrat)).toFixed(0)}
-                  </div>
-
-                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.7 }}>
-                    Mileage cost: ${toNumber(String(l.mileage_cost ?? 0)).toFixed(2)}
-                  </div>
-
                   <div
                     style={{
-                      marginTop: 12,
                       display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 10,
-                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
                     }}
                   >
-                    <UiButton type="button" variant="secondary" onClick={() => onEdit(l)}>
-                      Edit
-                    </UiButton>
-                    <UiButton type="button" variant="destructive" onClick={() => onDelete(l.id)}>
-                      Delete
-                    </UiButton>
+                    <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.25 }}>
+                      {shortCourseName(l.course)}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap" }}>
+                        ${total.toFixed(2)}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(l.id)}
+                        aria-label={isOpen ? "Collapse loop details" : "Expand loop details"}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "rgba(255,255,255,0.78)",
+                          cursor: "pointer",
+                          padding: 4,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d={isOpen ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
+
+                  {isOpen ? (
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>
+                        {formatMMDDYYYY(l.date)} • {l.loopType || "—"}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 14,
+                          flexWrap: "wrap",
+                          alignItems: "center",
+                          fontSize: 12,
+                          opacity: 0.9,
+                        }}
+                      >
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span className="ui-color-dot" style={{ backgroundColor: COLORS.bag }} />
+                          <span>{moneyShort(bag)}</span>
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span className="ui-color-dot" style={{ backgroundColor: COLORS.cash }} />
+                          <span>{moneyShort(cash)}</span>
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span className="ui-color-dot" style={{ backgroundColor: COLORS.digital }} />
+                          <span>{moneyShort(digital)}</span>
+                        </div>
+                        <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          <span className="ui-color-dot" style={{ backgroundColor: COLORS.pre }} />
+                          <span>{moneyShort(pre)}</span>
+                        </div>
+                      </div>
+
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>
+                        Mileage cost: ${toNumber(String(l.mileage_cost ?? 0)).toFixed(2)}
+                      </div>
+
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 10,
+                          marginTop: 2,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit(l);
+                          }}
+                          aria-label="Edit loop"
+                          title="Edit"
+                          style={{
+                            border: "1px solid rgba(255,255,255,0.14)",
+                            background: "rgba(255,255,255,0.06)",
+                            color: "rgba(255,255,255,0.9)",
+                            borderRadius: 12,
+                            width: 36,
+                            height: 36,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <path
+                              d="M12 20h9"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                            <path
+                              d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            />
+                          </svg>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete(l.id);
+                          }}
+                          aria-label="Delete loop"
+                          title="Delete"
+                          style={{
+                            border: "1px solid rgba(239,68,68,0.7)",
+                            background: "transparent",
+                            color: "rgba(239,68,68,0.95)",
+                            borderRadius: 12,
+                            width: 36,
+                            height: 36,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path
+                              d="M6 6l1 14h10l1-14"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinejoin="round"
+                            />
+                            <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                 </Card>
               );
             })}
@@ -751,6 +1000,18 @@ export default function LoopsPage() {
               display: block !important;
               border: 0 !important;
               background: transparent !important;
+            }
+
+            /* Legend: force single line + slightly tighter so it fits without wrapping */
+            .ll-legend {
+              font-size: 11px !important;
+              gap: 10px !important;
+              white-space: nowrap !important;
+              flex-wrap: nowrap !important;
+            }
+            .ll-legend-item {
+              gap: 6px !important;
+              white-space: nowrap !important;
             }
           }
         `}
