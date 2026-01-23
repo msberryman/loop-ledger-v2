@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { getExpenses, refreshAll, saveExpense, deleteExpense } from "../lib/storage";
 
-import DateRangeChips from "../components/DateRangeChips";
-import { getDateRange } from "../lib/dateRange";
-import type { DateRangeKey } from "../lib/dateRange";
+import { getDateRange, type DateRangeKey } from "../lib/dateRange";
 
 import "./Expenses.css";
+
+import { PageShell, ContentWidth, Card, Button as UiButton, PillRail } from "../ui-kit";
 
 type Expense = {
   id: string;
@@ -42,17 +42,29 @@ export default function ExpensesPage() {
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [showReceiptMenu, setShowReceiptMenu] = useState(false);
 
+  // Past Expenses: expandable/collapsible cards (UI only)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleExpanded = (id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   useEffect(() => {
-  // load cache immediately
-  setExpenses(getExpenses() as Expense[]);
+    // load cache immediately
+    setExpenses(getExpenses() as Expense[]);
 
-  // then fetch from Supabase into cache
-  refreshAll()
-    .then(() => setExpenses(getExpenses() as Expense[]))
-    .catch((e) => console.error("refreshAll failed:", e));
-}, []);
+    // then fetch from Supabase into cache
+    refreshAll()
+      .then(() => setExpenses(getExpenses() as Expense[]))
+      .catch((e) => console.error("refreshAll failed:", e));
+  }, []);
 
-    const filtered = useMemo(() => {
+  const filtered = useMemo(() => {
     const { start, end } = getDateRange(rangeKey);
 
     // getDateRange() may return Date objects; expenses store dates as "YYYY-MM-DD" strings.
@@ -67,11 +79,10 @@ export default function ExpensesPage() {
       .sort((a, b) => (a.date < b.date ? 1 : -1));
   }, [expenses, rangeKey]);
 
-
   async function refresh() {
-  await refreshAll();
-  setExpenses(getExpenses() as Expense[]);
-}
+    await refreshAll();
+    setExpenses(getExpenses() as Expense[]);
+  }
 
   function onPickReceipt(file?: File | null) {
     if (!file) return;
@@ -85,249 +96,562 @@ export default function ExpensesPage() {
   }
 
   function clearReceipt() {
-  setReceiptName("");
-  setReceiptDataUrl("");
-  if (cameraInputRef.current) cameraInputRef.current.value = "";
-  if (attachInputRef.current) attachInputRef.current.value = "";
-}
+    setReceiptName("");
+    setReceiptDataUrl("");
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    if (attachInputRef.current) attachInputRef.current.value = "";
+  }
 
   async function submitExpense() {
-  if (!date) return alert("Please enter a date.");
-  const amt = parseFloat(amount || "0");
-  if (!Number.isFinite(amt) || amt <= 0)
-    return alert("Please enter a valid amount.");
+    if (!date) return alert("Please enter a date.");
+    const amt = parseFloat(amount || "0");
+    if (!Number.isFinite(amt) || amt <= 0)
+      return alert("Please enter a valid amount.");
 
-  const newExpense: Expense = {
-    id: crypto?.randomUUID?.() ? crypto.randomUUID() : String(Date.now()),
-    date,
-    vendor: vendor.trim() || undefined,
-    description: description.trim() || undefined,
-    category: category || undefined,
-    amount: amt,
-    receiptName: receiptName || undefined,
-    receiptDataUrl: receiptDataUrl || undefined,
-  };
+    const newExpense: Expense = {
+      id: crypto?.randomUUID?.() ? crypto.randomUUID() : String(Date.now()),
+      date,
+      vendor: vendor.trim() || undefined,
+      description: description.trim() || undefined,
+      category: category || undefined,
+      amount: amt,
+      receiptName: receiptName || undefined,
+      receiptDataUrl: receiptDataUrl || undefined,
+    };
 
-  try {
-    // storage.ts maps Expense -> ll_expenses row
-    await saveExpense(newExpense);
-    await refresh();
-  } catch (err) {
-    console.error("Save expense failed:", err);
-    alert("Failed to save expense. Please try again.");
-    return;
+    try {
+      // storage.ts maps Expense -> ll_expenses row
+      await saveExpense(newExpense);
+      await refresh();
+    } catch (err) {
+      console.error("Save expense failed:", err);
+      alert("Failed to save expense. Please try again.");
+      return;
+    }
+
+    // Reset form
+    setDate("");
+    setVendor("");
+    setAmount("");
+    setCategory("");
+    setDescription("");
+    clearReceipt();
   }
-
-  // Reset form
-  setDate("");
-  setVendor("");
-  setAmount("");
-  setCategory("");
-  setDescription("");
-  clearReceipt();
-}
 
   async function removeExpense(id: string) {
-  try {
-    await deleteExpense(id);
-    await refresh();
-  } catch (err) {
-    console.error("Delete expense failed:", err);
-    alert("Failed to delete expense. Please try again.");
+    try {
+      await deleteExpense(id);
+      await refresh();
+    } catch (err) {
+      console.error("Delete expense failed:", err);
+      alert("Failed to delete expense. Please try again.");
+    }
   }
-}
+
+  // ---------- UI-only styles (match Loops Add Loop card) ----------
+  const fieldWrap: React.CSSProperties = {
+    display: "grid",
+    gap: 8,
+    width: "100%",
+    minWidth: 0,
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    opacity: 0.75,
+  };
+
+  const inputStyle: React.CSSProperties = {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    display: "block",
+    boxSizing: "border-box",
+    padding: "12px 14px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    color: "inherit",
+    outline: "none",
+  };
+
+  const selectStyle: React.CSSProperties = {
+    ...inputStyle,
+    appearance: "auto",
+  };
+
+  // Native picker shell: wrapper becomes the pill & clips iOS bleed
+  const nativeShell: React.CSSProperties = {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    overflow: "hidden",
+    WebkitMaskImage: "-webkit-radial-gradient(white, black)",
+  };
+
+  const nativeInner: React.CSSProperties = {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    display: "block",
+    boxSizing: "border-box",
+    border: "none",
+    outline: "none",
+    background: "transparent",
+    borderRadius: 0,
+    color: "inherit",
+    padding: "12px 14px",
+  };
+
+  const twoCol: React.CSSProperties = {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+    gap: 12,
+  };
+
+  const moneyTile: React.CSSProperties = {
+    border: "1px solid rgba(255,255,255,0.12)",
+    borderRadius: 14,
+    padding: 12,
+    background: "rgba(0,0,0,0.18)",
+    minWidth: 0,
+  };
+
+  const moneyRow: React.CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+  };
+
+  const moneyInput: React.CSSProperties = {
+    width: "100%",
+    maxWidth: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
+    padding: "10px 10px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    color: "inherit",
+    outline: "none",
+    fontWeight: 800,
+  };
+
+  // Past Expenses: match Loops "shrink-to-fit" centered pill rail sizing
+  const railSizedWrap: React.CSSProperties = {
+    display: "inline-block",
+    width: "fit-content",
+    maxWidth: "100%",
+  };
+
+  const railScaleWrap: React.CSSProperties = {
+    ...railSizedWrap,
+    transform: "scale(0.96)",
+    transformOrigin: "center",
+  };
+
+  const shortVendor = (s?: string) => {
+    const str = String(s || "").trim();
+    if (!str) return "—";
+    const first = str.split(",")[0]?.trim();
+    return first || str;
+  };
 
   return (
-    <div className="expPage">
-      <div className="expHeaderRow">
-        <h1 className="expTitle">Expenses</h1>
+    <PageShell>
+      <ContentWidth>
+        <h1 className="ui-page-title" style={{ margin: 0 }}>
+          Expenses
+        </h1>
+      </ContentWidth>
 
-        <div className="expFilters">
-          <DateRangeChips value={rangeKey} onChange={setRangeKey} />
-        </div>
-      </div>
+      {/* ---------------- ADD EXPENSE (UI matches Add Loop card) ---------------- */}
+      <ContentWidth style={{ marginTop: 14 }}>
+        <Card>
+          <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>ADD EXPENSE</div>
 
-      <div className="expCard">
-        <div className="expForm">
-          {/* Date */}
-          <label className="expLabel">
-            Date
-            <input
-              className="expInput"
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </label>
+          <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
+            {/* Date */}
+            <div style={fieldWrap}>
+              <div style={labelStyle}>Date</div>
+              <div style={nativeShell}>
+                <input
+                  className="ll-date-input"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  style={nativeInner}
+                />
+              </div>
+            </div>
 
-          {/* Vendor */}
-          <label className="expLabel">
-            Vendor
-            <input
-              className="expInput"
-              type="text"
-              placeholder="REI, Walmart, Gas Station…"
-              value={vendor}
-              onChange={(e) => setVendor(e.target.value)}
-            />
-          </label>
+            {/* Vendor */}
+            <div style={fieldWrap}>
+              <div style={labelStyle}>Vendor</div>
+              <input
+                type="text"
+                placeholder="REI, Walmart, Gas Station…"
+                value={vendor}
+                onChange={(e) => setVendor(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
 
-          {/* Amount */}
-          <label className="expLabel">
-            Amount
-            <input
-              className="expInput"
-              type="number"
-              inputMode="decimal"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-            />
-          </label>
+            {/* Category + Description */}
+            <div style={twoCol}>
+              <div style={fieldWrap}>
+                <div style={labelStyle}>Category</div>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  style={selectStyle}
+                >
+                  <option value="" disabled>
+                    Make Selection
+                  </option>
+                  {CATEGORY_OPTIONS.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          {/* Category */}
-<label className="expLabel">
-  Category
-  <select
-    className="expSelect"
-    value={category}
-    onChange={(e) => setCategory(e.target.value)}
-  >
-    <option value="" disabled>
-      Make Selection
-    </option>
+              <div style={fieldWrap}>
+                <div style={labelStyle}>Description</div>
+                <input
+                  type="text"
+                  placeholder="Shoes, range balls, Gatorade…"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+            </div>
 
-    {CATEGORY_OPTIONS.map((opt) => (
-      <option key={opt} value={opt}>
-        {opt}
-      </option>
-    ))}
-  </select>
-</label>
+            {/* Amount (styled like money tiles) */}
+            <div style={moneyTile}>
+              <div style={labelStyle}>Amount</div>
+              <div style={moneyRow}>
+                <span style={{ opacity: 0.75, fontWeight: 900 }}>$</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  style={moneyInput}
+                />
+              </div>
+            </div>
 
+            {/* Receipt controls (same functionality, UI-aligned buttons) */}
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                ref={cameraInputRef}
+                className="expHiddenFile"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(e) => onPickReceipt(e.target.files?.[0])}
+              />
+              <input
+                ref={attachInputRef}
+                className="expHiddenFile"
+                type="file"
+                accept="image/*"
+                onChange={(e) => onPickReceipt(e.target.files?.[0])}
+              />
+              {/* kept for parity with your file; still unused */}
+              <input ref={receiptInputRef} className="expHiddenFile" type="file" accept="image/*" />
 
-          {/* Description */}
-          <label className="expLabel">
-            Description
-            <input
-              className="expInput"
-              type="text"
-              placeholder="Shoes, range balls, Gatorade…"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </label>
+              <div style={{ position: "relative" }}>
+                <UiButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowReceiptMenu((v) => !v)}
+                >
+                  Add Receipt
+                </UiButton>
 
-          {/* Receipt */}
-<div className="expReceiptRow">
-  <input
-    ref={cameraInputRef}
-    className="expHiddenFile"
-    type="file"
-    accept="image/*"
-    capture="environment"
-    onChange={(e) => onPickReceipt(e.target.files?.[0])}
-  />
-  <input
-    ref={attachInputRef}
-    className="expHiddenFile"
-    type="file"
-    accept="image/*"
-    onChange={(e) => onPickReceipt(e.target.files?.[0])}
-  />
+                {showReceiptMenu && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "calc(100% + 8px)",
+                      left: 0,
+                      zIndex: 30,
+                      border: "1px solid rgba(255,255,255,0.14)",
+                      background: "rgba(10,10,12,0.92)",
+                      borderRadius: 12,
+                      overflow: "hidden",
+                      minWidth: 180,
+                      boxShadow: "0 10px 30px rgba(0,0,0,0.45)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowReceiptMenu(false);
+                        cameraInputRef.current?.click();
+                      }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        border: "none",
+                        background: "transparent",
+                        color: "rgba(255,255,255,0.92)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Take Photo
+                    </button>
+                    <div style={{ height: 1, background: "rgba(255,255,255,0.08)" }} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowReceiptMenu(false);
+                        attachInputRef.current?.click();
+                      }}
+                      style={{
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        border: "none",
+                        background: "transparent",
+                        color: "rgba(255,255,255,0.92)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Choose Photo
+                    </button>
+                  </div>
+                )}
+              </div>
 
-  <div className="expReceiptMenuWrap">
-    <button
-      type="button"
-      className="expSecondaryBtn"
-      onClick={() => setShowReceiptMenu((v) => !v)}
-    >
-      Add Receipt
-    </button>
-
-    {showReceiptMenu && (
-      <div className="expReceiptMenu">
-        <button
-          type="button"
-          className="expReceiptMenuItem"
-          onClick={() => {
-            setShowReceiptMenu(false);
-            cameraInputRef.current?.click();
-          }}
-        >
-          Take Photo
-        </button>
-
-        <button
-          type="button"
-          className="expReceiptMenuItem"
-          onClick={() => {
-            setShowReceiptMenu(false);
-            attachInputRef.current?.click();
-          }}
-        >
-          Choose Photo
-        </button>
-      </div>
-    )}
-  </div>
-
-  {(receiptName || receiptDataUrl) && (
-    <button
-      type="button"
-      className="expGhostBtn"
-      onClick={() => {
-        setShowReceiptMenu(false);
-        clearReceipt();
-      }}
-    >
-      Clear
-    </button>
-  )}
-</div>
-
-
-          {(receiptName || receiptDataUrl) && (
-            <div className="expReceiptMeta">
-              <div className="expReceiptName">{receiptName || "Receipt attached"}</div>
-              {receiptDataUrl && (
-                <img className="expReceiptPreview" src={receiptDataUrl} alt="Receipt preview" />
+              {(receiptName || receiptDataUrl) && (
+                <UiButton
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setShowReceiptMenu(false);
+                    clearReceipt();
+                  }}
+                >
+                  Clear
+                </UiButton>
               )}
             </div>
-          )}
 
-          <button type="button" className="expPrimaryBtn" onClick={submitExpense}>
-            Add Expense
-          </button>
-        </div>
-      </div>
-
-      <div className="expList">
-        {filtered.map((e) => (
-          <div className="expItem" key={e.id}>
-            <div className="expItemTop">
-              <div className="expItemLeft">
-                <div className="expItemVendor">{e.vendor || "—"}</div>
-                <div className="expItemMeta">
-                  <span>{e.category || "Other"}</span>
-                  <span className="expDot">•</span>
-                  <span>{e.description || "—"}</span>
+            {(receiptName || receiptDataUrl) && (
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,0.10)",
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: 14,
+                  padding: 12,
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.9 }}>
+                  {receiptName || "Receipt attached"}
                 </div>
+                {receiptDataUrl && (
+                  <img
+                    src={receiptDataUrl}
+                    alt="Receipt preview"
+                    style={{
+                      marginTop: 10,
+                      width: "100%",
+                      borderRadius: 12,
+                      border: "1px solid rgba(255,255,255,0.10)",
+                    }}
+                  />
+                )}
               </div>
+            )}
 
-              <div className="expItemRight">
-                <div className="expItemAmount">${(e.amount ?? 0).toFixed(2)}</div>
-                <div className="expItemDate">{e.date}</div>
-              </div>
-            </div>
-
-            <button className="expDangerBtn" onClick={() => removeExpense(e.id)}>
-              Delete
-            </button>
+            <UiButton type="button" variant="primary" onClick={submitExpense} style={{ width: "100%" }}>
+              Add Expense
+            </UiButton>
           </div>
-        ))}
-      </div>
-    </div>
+        </Card>
+      </ContentWidth>
+
+      {/* Divider */}
+      <ContentWidth style={{ marginTop: 18 }}>
+        <div
+          style={{
+            height: 1,
+            background: "rgba(255,255,255,0.10)",
+            width: "100%",
+            margin: "6px 0 16px",
+          }}
+        />
+      </ContentWidth>
+
+      {/* ---------------- PAST EXPENSES (mirrors Past Loops layout) ---------------- */}
+      <ContentWidth>
+        <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900 }}>Past Expenses</h2>
+
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 12, marginBottom: 12 }}>
+          <div style={railScaleWrap}>
+            <PillRail<DateRangeKey>
+              ariaLabel="Past expenses date range filter"
+              options={[
+                { key: "7D", label: "7D" },
+                { key: "14D", label: "14D" },
+                { key: "30D", label: "30D" },
+                { key: "MTD", label: "MTD" },
+                { key: "YTD", label: "YTD" },
+                { key: "ALL", label: "ALL" },
+              ]}
+              value={rangeKey}
+              onChange={setRangeKey}
+            />
+          </div>
+        </div>
+
+        {filtered.length === 0 ? (
+          <div style={{ opacity: 0.7, textAlign: "center" }}>No expenses in this range.</div>
+        ) : (
+          <div style={{ display: "grid", gap: 12 }}>
+            {filtered.map((e) => {
+              const isOpen = expandedIds.has(e.id);
+              const amt = Number(e.amount ?? 0);
+
+              return (
+                <Card key={e.id}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.25 }}>
+                      {shortVendor(e.vendor)}
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap" }}>
+                        ${amt.toFixed(2)}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleExpanded(e.id)}
+                        aria-label={isOpen ? "Collapse expense details" : "Expand expense details"}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          color: "rgba(255,255,255,0.78)",
+                          cursor: "pointer",
+                          padding: 4,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                        }}
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                          <path
+                            d={isOpen ? "M6 15l6-6 6 6" : "M6 9l6 6 6-6"}
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  {isOpen ? (
+                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                      <div style={{ fontSize: 12, opacity: 0.75 }}>
+                        {e.date || "—"} • {e.category || "Other"}
+                      </div>
+
+                      <div style={{ fontSize: 12, opacity: 0.85 }}>
+                        {e.description || "—"}
+                      </div>
+
+                      {(e.receiptName || e.receiptDataUrl) && (
+                        <div style={{ fontSize: 12, opacity: 0.8 }}>
+                          Receipt: {e.receiptName || "Attached"}
+                        </div>
+                      )}
+
+                      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 2 }}>
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            removeExpense(e.id);
+                          }}
+                          aria-label="Delete expense"
+                          title="Delete"
+                          style={{
+                            border: "1px solid rgba(239,68,68,0.7)",
+                            background: "transparent",
+                            color: "rgba(239,68,68,0.95)",
+                            borderRadius: 12,
+                            width: 40,
+                            height: 36,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                          }}
+                        >
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                            <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path
+                              d="M6 6l1 14h10l1-14"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinejoin="round"
+                            />
+                            <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                            <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </Card>
+              );
+            })}
+          </div>
+        )}
+      </ContentWidth>
+
+      {/* iOS/Safari hardening: keep native date picker clipped like Loops */}
+      <style>
+        {`
+          @media (max-width: 520px) {
+            input.ll-date-input {
+              width: 100% !important;
+              max-width: 100% !important;
+              min-width: 0 !important;
+              box-sizing: border-box !important;
+              display: block !important;
+              border: 0 !important;
+              background: transparent !important;
+            }
+          }
+        `}
+      </style>
+    </PageShell>
   );
 }
 
