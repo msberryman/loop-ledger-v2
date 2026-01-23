@@ -15,12 +15,55 @@ type Expense = {
   category?: string;
   amount: number;
 
-  // Optional receipt metadata (UI only for now)
   receiptName?: string;
   receiptDataUrl?: string;
 };
 
 const CATEGORY_OPTIONS = ["Gear & Supplies", "Food", "Mileage", "Other"] as const;
+
+function uuidv4(): string {
+  if (typeof crypto !== "undefined" && typeof (crypto as any).randomUUID === "function") {
+    return (crypto as any).randomUUID();
+  }
+
+  const bytes =
+    typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function"
+      ? crypto.getRandomValues(new Uint8Array(16))
+      : Uint8Array.from({ length: 16 }, () => Math.floor(Math.random() * 256));
+
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function isUuidLike(s: string) {
+  return UUID_RE.test(String(s || "").trim());
+}
+
+function formatMMDDYYYY(iso: string) {
+  const s = String(iso || "").trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-");
+    return `${m}-${d}-${y}`;
+  }
+  return s || "—";
+}
+
+function isImageLikeUrl(s: string) {
+  const v = String(s || "").trim();
+  if (!v) return false;
+  if (v.startsWith("data:image/")) return true;
+  const lower = v.toLowerCase();
+  return (
+    (lower.startsWith("http://") || lower.startsWith("https://")) &&
+    (lower.includes("image") || lower.match(/\.(png|jpg|jpeg|webp|gif)(\?|$)/))
+  );
+}
 
 export default function ExpensesPage() {
   const [rangeKey, setRangeKey] = useState<DateRangeKey>("MTD");
@@ -42,7 +85,7 @@ export default function ExpensesPage() {
   const attachInputRef = useRef<HTMLInputElement | null>(null);
   const [showReceiptMenu, setShowReceiptMenu] = useState(false);
 
-  // Past Expenses: expandable/collapsible cards (UI only)
+  // Past Expenses: expandable/collapsible cards
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   const toggleExpanded = (id: string) => {
@@ -54,11 +97,13 @@ export default function ExpensesPage() {
     });
   };
 
+  // Full-screen receipt modal
+  const [receiptModalUrl, setReceiptModalUrl] = useState<string | null>(null);
+  const [receiptModalName, setReceiptModalName] = useState<string>("");
+
   useEffect(() => {
-    // load cache immediately
     setExpenses(getExpenses() as Expense[]);
 
-    // then fetch from Supabase into cache
     refreshAll()
       .then(() => setExpenses(getExpenses() as Expense[]))
       .catch((e) => console.error("refreshAll failed:", e));
@@ -66,13 +111,8 @@ export default function ExpensesPage() {
 
   const filtered = useMemo(() => {
     const { start, end } = getDateRange(rangeKey);
-
-    // getDateRange() may return Date objects; expenses store dates as "YYYY-MM-DD" strings.
-    // Normalize to "YYYY-MM-DD" strings so comparisons are valid + build passes.
-    const startKey =
-      start instanceof Date ? start.toISOString().slice(0, 10) : String(start);
-    const endKey =
-      end instanceof Date ? end.toISOString().slice(0, 10) : String(end);
+    const startKey = start instanceof Date ? start.toISOString().slice(0, 10) : String(start);
+    const endKey = end instanceof Date ? end.toISOString().slice(0, 10) : String(end);
 
     return (expenses || [])
       .filter((e) => e.date >= startKey && e.date <= endKey)
@@ -86,10 +126,8 @@ export default function ExpensesPage() {
 
   function onPickReceipt(file?: File | null) {
     if (!file) return;
-
     setReceiptName(file.name);
 
-    // Read as data URL so we can preview + optionally persist later
     const reader = new FileReader();
     reader.onload = () => setReceiptDataUrl(String(reader.result || ""));
     reader.readAsDataURL(file);
@@ -105,11 +143,10 @@ export default function ExpensesPage() {
   async function submitExpense() {
     if (!date) return alert("Please enter a date.");
     const amt = parseFloat(amount || "0");
-    if (!Number.isFinite(amt) || amt <= 0)
-      return alert("Please enter a valid amount.");
+    if (!Number.isFinite(amt) || amt <= 0) return alert("Please enter a valid amount.");
 
     const newExpense: Expense = {
-      id: crypto?.randomUUID?.() ? crypto.randomUUID() : String(Date.now()),
+      id: uuidv4(),
       date,
       vendor: vendor.trim() || undefined,
       description: description.trim() || undefined,
@@ -120,7 +157,6 @@ export default function ExpensesPage() {
     };
 
     try {
-      // storage.ts maps Expense -> ll_expenses row
       await saveExpense(newExpense);
       await refresh();
     } catch (err) {
@@ -129,7 +165,6 @@ export default function ExpensesPage() {
       return;
     }
 
-    // Reset form
     setDate("");
     setVendor("");
     setAmount("");
@@ -148,13 +183,19 @@ export default function ExpensesPage() {
     }
   }
 
-  // ---------- UI-only styles (match Loops Add Loop card) ----------
-  const fieldWrap: React.CSSProperties = {
-    display: "grid",
-    gap: 8,
-    width: "100%",
-    minWidth: 0,
+  const cardTitle = (e: Expense) => {
+    const v = String(e.vendor || "").trim();
+    const d = String(e.description || "").trim();
+    const c = String(e.category || "").trim();
+
+    if (v && !isUuidLike(v)) return v;
+    if (d && !isUuidLike(d)) return d;
+    if (c) return c;
+    return "Expense";
   };
+
+  // ---------- UI-only styles ----------
+  const fieldWrap: React.CSSProperties = { display: "grid", gap: 8, width: "100%", minWidth: 0 };
 
   const labelStyle: React.CSSProperties = {
     fontSize: 12,
@@ -177,12 +218,8 @@ export default function ExpensesPage() {
     outline: "none",
   };
 
-  const selectStyle: React.CSSProperties = {
-    ...inputStyle,
-    appearance: "auto",
-  };
+  const selectStyle: React.CSSProperties = { ...inputStyle, appearance: "auto" };
 
-  // Native picker shell: wrapper becomes the pill & clips iOS bleed
   const nativeShell: React.CSSProperties = {
     width: "100%",
     maxWidth: "100%",
@@ -223,12 +260,7 @@ export default function ExpensesPage() {
     minWidth: 0,
   };
 
-  const moneyRow: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-  };
+  const moneyRow: React.CSSProperties = { display: "flex", alignItems: "center", gap: 8, marginTop: 6 };
 
   const moneyInput: React.CSSProperties = {
     width: "100%",
@@ -244,24 +276,12 @@ export default function ExpensesPage() {
     fontWeight: 800,
   };
 
-  // Past Expenses: match Loops "shrink-to-fit" centered pill rail sizing
-  const railSizedWrap: React.CSSProperties = {
+  const railScaleWrap: React.CSSProperties = {
     display: "inline-block",
     width: "fit-content",
     maxWidth: "100%",
-  };
-
-  const railScaleWrap: React.CSSProperties = {
-    ...railSizedWrap,
     transform: "scale(0.96)",
     transformOrigin: "center",
-  };
-
-  const shortVendor = (s?: string) => {
-    const str = String(s || "").trim();
-    if (!str) return "—";
-    const first = str.split(",")[0]?.trim();
-    return first || str;
   };
 
   return (
@@ -272,47 +292,28 @@ export default function ExpensesPage() {
         </h1>
       </ContentWidth>
 
-      {/* ---------------- ADD EXPENSE (UI matches Add Loop card) ---------------- */}
+      {/* ---------------- ADD EXPENSE (UNCHANGED) ---------------- */}
       <ContentWidth style={{ marginTop: 14 }}>
         <Card>
           <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>ADD EXPENSE</div>
 
           <div style={{ marginTop: 14, display: "grid", gap: 14 }}>
-            {/* Date */}
             <div style={fieldWrap}>
               <div style={labelStyle}>Date</div>
               <div style={nativeShell}>
-                <input
-                  className="ll-date-input"
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                  style={nativeInner}
-                />
+                <input className="ll-date-input" type="date" value={date} onChange={(e) => setDate(e.target.value)} style={nativeInner} />
               </div>
             </div>
 
-            {/* Vendor */}
             <div style={fieldWrap}>
               <div style={labelStyle}>Vendor</div>
-              <input
-                type="text"
-                placeholder="REI, Walmart, Gas Station…"
-                value={vendor}
-                onChange={(e) => setVendor(e.target.value)}
-                style={inputStyle}
-              />
+              <input type="text" placeholder="REI, Walmart, Gas Station…" value={vendor} onChange={(e) => setVendor(e.target.value)} style={inputStyle} />
             </div>
 
-            {/* Category + Description */}
             <div style={twoCol}>
               <div style={fieldWrap}>
                 <div style={labelStyle}>Category</div>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  style={selectStyle}
-                >
+                <select value={category} onChange={(e) => setCategory(e.target.value)} style={selectStyle}>
                   <option value="" disabled>
                     Make Selection
                   </option>
@@ -326,58 +327,25 @@ export default function ExpensesPage() {
 
               <div style={fieldWrap}>
                 <div style={labelStyle}>Description</div>
-                <input
-                  type="text"
-                  placeholder="Shoes, range balls, Gatorade…"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  style={inputStyle}
-                />
+                <input type="text" placeholder="Shoes, range balls, Gatorade…" value={description} onChange={(e) => setDescription(e.target.value)} style={inputStyle} />
               </div>
             </div>
 
-            {/* Amount (styled like money tiles) */}
             <div style={moneyTile}>
               <div style={labelStyle}>Amount</div>
               <div style={moneyRow}>
                 <span style={{ opacity: 0.75, fontWeight: 900 }}>$</span>
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  style={moneyInput}
-                />
+                <input type="number" inputMode="decimal" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} style={moneyInput} />
               </div>
             </div>
 
-            {/* Receipt controls (same functionality, UI-aligned buttons) */}
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-              <input
-                ref={cameraInputRef}
-                className="expHiddenFile"
-                type="file"
-                accept="image/*"
-                capture="environment"
-                onChange={(e) => onPickReceipt(e.target.files?.[0])}
-              />
-              <input
-                ref={attachInputRef}
-                className="expHiddenFile"
-                type="file"
-                accept="image/*"
-                onChange={(e) => onPickReceipt(e.target.files?.[0])}
-              />
-              {/* kept for parity with your file; still unused */}
+              <input ref={cameraInputRef} className="expHiddenFile" type="file" accept="image/*" capture="environment" onChange={(e) => onPickReceipt(e.target.files?.[0])} />
+              <input ref={attachInputRef} className="expHiddenFile" type="file" accept="image/*" onChange={(e) => onPickReceipt(e.target.files?.[0])} />
               <input ref={receiptInputRef} className="expHiddenFile" type="file" accept="image/*" />
 
               <div style={{ position: "relative" }}>
-                <UiButton
-                  type="button"
-                  variant="secondary"
-                  onClick={() => setShowReceiptMenu((v) => !v)}
-                >
+                <UiButton type="button" variant="secondary" onClick={() => setShowReceiptMenu((v) => !v)}>
                   Add Receipt
                 </UiButton>
 
@@ -438,14 +406,7 @@ export default function ExpensesPage() {
               </div>
 
               {(receiptName || receiptDataUrl) && (
-                <UiButton
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setShowReceiptMenu(false);
-                    clearReceipt();
-                  }}
-                >
+                <UiButton type="button" variant="secondary" onClick={clearReceipt}>
                   Clear
                 </UiButton>
               )}
@@ -460,9 +421,7 @@ export default function ExpensesPage() {
                   padding: 12,
                 }}
               >
-                <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.9 }}>
-                  {receiptName || "Receipt attached"}
-                </div>
+                <div style={{ fontSize: 13, fontWeight: 800, opacity: 0.9 }}>{receiptName || "Receipt attached"}</div>
                 {receiptDataUrl && (
                   <img
                     src={receiptDataUrl}
@@ -487,17 +446,10 @@ export default function ExpensesPage() {
 
       {/* Divider */}
       <ContentWidth style={{ marginTop: 18 }}>
-        <div
-          style={{
-            height: 1,
-            background: "rgba(255,255,255,0.10)",
-            width: "100%",
-            margin: "6px 0 16px",
-          }}
-        />
+        <div style={{ height: 1, background: "rgba(255,255,255,0.10)", width: "100%", margin: "6px 0 16px" }} />
       </ContentWidth>
 
-      {/* ---------------- PAST EXPENSES (mirrors Past Loops layout) ---------------- */}
+      {/* ---------------- PAST EXPENSES (NOW ACTUALLY WORKS) ---------------- */}
       <ContentWidth>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900 }}>Past Expenses</h2>
 
@@ -526,25 +478,21 @@ export default function ExpensesPage() {
             {filtered.map((e) => {
               const isOpen = expandedIds.has(e.id);
               const amt = Number(e.amount ?? 0);
+              const title = cardTitle(e);
+              const desc = String(e.description || "").trim();
+              const receiptUrl = String(e.receiptDataUrl || "").trim();
+              const receiptLabel = String(e.receiptName || "").trim();
 
               return (
                 <Card key={e.id}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 12,
-                    }}
-                  >
-                    <div style={{ fontWeight: 900, fontSize: 16, lineHeight: 1.25 }}>
-                      {shortVendor(e.vendor)}
+                  {/* Collapsed: Title + Amount */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div style={{ minWidth: 0, flex: 1, fontWeight: 900, fontSize: 16, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {title}
                     </div>
 
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap" }}>
-                        ${amt.toFixed(2)}
-                      </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                      <div style={{ fontWeight: 900, fontSize: 16, whiteSpace: "nowrap" }}>${amt.toFixed(2)}</div>
 
                       <button
                         type="button"
@@ -575,20 +523,41 @@ export default function ExpensesPage() {
                   </div>
 
                   {isOpen ? (
-                    <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+                    <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
                       <div style={{ fontSize: 12, opacity: 0.75 }}>
-                        {e.date || "—"} • {e.category || "Other"}
+                        {formatMMDDYYYY(e.date)} • {String(e.category || "Other")}
                       </div>
 
-                      <div style={{ fontSize: 12, opacity: 0.85 }}>
-                        {e.description || "—"}
-                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.9, lineHeight: 1.35 }}>{desc || "—"}</div>
 
-                      {(e.receiptName || e.receiptDataUrl) && (
-                        <div style={{ fontSize: 12, opacity: 0.8 }}>
-                          Receipt: {e.receiptName || "Attached"}
+                      {receiptUrl && isImageLikeUrl(receiptUrl) ? (
+                        <div style={{ display: "grid", gap: 8 }}>
+                          <div style={{ fontSize: 12, opacity: 0.75 }}>
+                            Receipt{receiptLabel ? `: ${receiptLabel}` : ""}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setReceiptModalUrl(receiptUrl);
+                              setReceiptModalName(receiptLabel || "Receipt");
+                            }}
+                            style={{ border: "none", padding: 0, background: "transparent", cursor: "pointer", width: "fit-content" }}
+                          >
+                            <img
+                              src={receiptUrl}
+                              alt="Receipt thumbnail"
+                              style={{
+                                width: 96,
+                                height: 96,
+                                objectFit: "cover",
+                                borderRadius: 12,
+                                border: "1px solid rgba(255,255,255,0.10)",
+                              }}
+                            />
+                          </button>
                         </div>
-                      )}
+                      ) : null}
 
                       <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 2 }}>
                         <button
@@ -615,12 +584,7 @@ export default function ExpensesPage() {
                           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
                             <path d="M3 6h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             <path d="M8 6V4h8v2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                            <path
-                              d="M6 6l1 14h10l1-14"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinejoin="round"
-                            />
+                            <path d="M6 6l1 14h10l1-14" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                             <path d="M10 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                             <path d="M14 11v6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                           </svg>
@@ -635,7 +599,67 @@ export default function ExpensesPage() {
         )}
       </ContentWidth>
 
-      {/* iOS/Safari hardening: keep native date picker clipped like Loops */}
+      {/* Receipt full-screen modal */}
+      {receiptModalUrl ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setReceiptModalUrl(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(0,0,0,0.86)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 720,
+              borderRadius: 16,
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "rgba(10,10,12,0.92)",
+              padding: 12,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 900, fontSize: 14, opacity: 0.9 }}>{receiptModalName}</div>
+              <button
+                type="button"
+                onClick={() => setReceiptModalUrl(null)}
+                style={{
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.06)",
+                  color: "rgba(255,255,255,0.9)",
+                  borderRadius: 12,
+                  padding: "8px 10px",
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+            </div>
+
+            <img
+              src={receiptModalUrl}
+              alt="Receipt full screen"
+              style={{
+                width: "100%",
+                marginTop: 10,
+                borderRadius: 14,
+                border: "1px solid rgba(255,255,255,0.10)",
+                background: "rgba(0,0,0,0.35)",
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
+
       <style>
         {`
           @media (max-width: 520px) {
@@ -654,4 +678,3 @@ export default function ExpensesPage() {
     </PageShell>
   );
 }
-
