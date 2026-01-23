@@ -1,11 +1,12 @@
 // src/components/BottomNav.tsx
-
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
+import { HomeIcon, SettingsIcon } from "../ui/Icons";
 
 export default function BottomNav() {
   const loc = useLocation();
 
-  const tab = (path: string, label: string | null, icon: string | null) => (
+  const tab = (path: string, label: string | null, icon: React.ReactNode | null) => (
     <Link
       to={path}
       style={{
@@ -21,7 +22,20 @@ export default function BottomNav() {
         textDecoration: "none",
       }}
     >
-      {icon && <div style={{ fontSize: 22, lineHeight: 1 }}>{icon}</div>}
+      {icon && (
+        <div
+          style={{
+            width: 22,
+            height: 22,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+          }}
+        >
+          {icon}
+        </div>
+      )}
       {label && <div style={{ marginTop: icon ? 3 : 0 }}>{label}</div>}
     </Link>
   );
@@ -41,13 +55,12 @@ export default function BottomNav() {
         zIndex: 999,
       }}
     >
-      {tab("/home", null, "🏠")}
+      {tab("/home", null, <HomeIcon />)}
       {tab("/loops", "Loops", null)}
       {tab("/expenses", "Expenses", null)}
       {tab("/income", "Income", null)}
       {tab("/insights", "Insights", null)}
-      {tab("/settings", null, "⚙️")}
+      {tab("/settings", null, <SettingsIcon />)}
     </div>
   );
 }
-

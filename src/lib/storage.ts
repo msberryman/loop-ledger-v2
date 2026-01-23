@@ -51,7 +51,7 @@ function loopFromDb(r: any) {
     userId: r.user_id,
     date: r.date,
     course: r.course,
-    placeId: r.course_place_id ?? "", // keep compatible with your existing form usage
+    placeId: r.course_place_id ?? "",
     loopType: r.loop_type ?? "",
 
     bagFee: Number(r.bag_fee) || 0,
@@ -75,7 +75,7 @@ function loopFromDb(r: any) {
 // app object -> DB row (snake_case)
 function loopToDb(userId: string, loop: any) {
   return {
-    id: loop.id, // undefined is fine for insert
+    id: loop.id,
     user_id: userId,
 
     date: loop.date,
@@ -100,14 +100,81 @@ function loopToDb(userId: string, loop: any) {
   };
 }
 
+/* =========================
+   EXPENSES: FIXED MAPPING
+   =========================
+   We persist vendor/description/receipt in the existing `notes` field as JSON.
+   This avoids DB migrations and makes Past Expenses actually display.
+*/
+
+type ExpenseNotesPayload = {
+  vendor?: string;
+  description?: string;
+  receiptName?: string;
+  receiptDataUrl?: string;
+};
+
+function packExpenseNotes(e: any): string | null {
+  // If any of the "extra" fields exist, store JSON in notes.
+  const payload: ExpenseNotesPayload = {};
+  if (e?.vendor) payload.vendor = String(e.vendor);
+  if (e?.description) payload.description = String(e.description);
+  if (e?.receiptName) payload.receiptName = String(e.receiptName);
+  if (e?.receiptDataUrl) payload.receiptDataUrl = String(e.receiptDataUrl);
+
+  const hasAny =
+    payload.vendor || payload.description || payload.receiptName || payload.receiptDataUrl;
+
+  if (hasAny) return JSON.stringify(payload);
+
+  // Back-compat: if old code used `notes`, keep it
+  if (e?.notes) return String(e.notes);
+
+  return null;
+}
+
+function unpackExpenseNotes(notes: any): ExpenseNotesPayload & { rawNotes?: string } {
+  const s = String(notes ?? "").trim();
+  if (!s) return {};
+
+  // If notes is JSON, parse and extract fields.
+  if (s.startsWith("{") && s.endsWith("}")) {
+    try {
+      const obj = JSON.parse(s);
+      return {
+        vendor: obj?.vendor ? String(obj.vendor) : undefined,
+        description: obj?.description ? String(obj.description) : undefined,
+        receiptName: obj?.receiptName ? String(obj.receiptName) : undefined,
+        receiptDataUrl: obj?.receiptDataUrl ? String(obj.receiptDataUrl) : undefined,
+        rawNotes: s,
+      };
+    } catch {
+      // fall through to raw text
+    }
+  }
+
+  // Otherwise treat notes as a plain description (best effort)
+  return { description: s, rawNotes: s };
+}
+
 function expenseFromDb(r: any) {
+  const unpacked = unpackExpenseNotes(r.notes);
   return {
     id: r.id,
     userId: r.user_id,
     date: r.date,
     category: r.category,
     amount: Number(r.amount) || 0,
+
+    // ✅ these are what your Expenses page expects:
+    vendor: unpacked.vendor ?? "",
+    description: unpacked.description ?? "",
+    receiptName: unpacked.receiptName ?? "",
+    receiptDataUrl: unpacked.receiptDataUrl ?? "",
+
+    // keep notes around for debugging/back-compat if needed
     notes: r.notes ?? "",
+
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -120,7 +187,10 @@ function expenseToDb(userId: string, e: any) {
     date: e.date,
     category: e.category,
     amount: Number(e.amount) || 0,
-    notes: e.notes || null,
+
+    // ✅ store all extra fields inside notes JSON
+    notes: packExpenseNotes(e),
+
     updated_at: new Date().toISOString(),
   };
 }
@@ -132,7 +202,6 @@ function settingsFromDb(r: any) {
     homePlaceId: r.home_place_id ?? "",
     mileageRate: Number(r.mileage_rate) || 0.67,
 
-    // NEW: default bag fees
     defaultBagFeeSingle:
       r.default_bag_fee_single === null || r.default_bag_fee_single === undefined
         ? null
@@ -158,7 +227,6 @@ function settingsToDb(userId: string, s: any) {
     home_place_id: s?.homePlaceId || null,
     mileage_rate: Number(s?.mileageRate) || 0.67,
 
-    // NEW: default bag fees (nullable)
     default_bag_fee_single:
       s?.defaultBagFeeSingle === null || s?.defaultBagFeeSingle === undefined || s?.defaultBagFeeSingle === ""
         ? null
@@ -226,7 +294,6 @@ export async function saveLoop(loop: any) {
 
   if (error) throw error;
 
-  // Update cache entry
   const saved = loopFromDb(data);
   loopsCache = [saved, ...loopsCache.filter((l) => l.id !== saved.id)];
   notify();
@@ -248,15 +315,14 @@ export async function deleteLoop(loopId: string) {
   notify();
 }
 
-// For mileage update after compute
 export async function updateLoopMileage(loopId: string, miles: number, cost: number) {
   const userId = await requireUserId();
 
   const { data, error } = await supabase
     .from("ll_loops")
     .update({
-      mileage_miles: Number(miles) || 0,
-      mileage_cost: Number(cost) || 0,
+      mileage_miles: miles,
+      mileage_cost: cost,
       updated_at: new Date().toISOString(),
     })
     .eq("id", loopId)
@@ -266,10 +332,10 @@ export async function updateLoopMileage(loopId: string, miles: number, cost: num
 
   if (error) throw error;
 
-  const updated = loopFromDb(data);
-  loopsCache = [updated, ...loopsCache.filter((l) => l.id !== updated.id)];
+  const saved = loopFromDb(data);
+  loopsCache = [saved, ...loopsCache.filter((l) => l.id !== saved.id)];
   notify();
-  return updated;
+  return saved;
 }
 
 // ----- CRUD: Expenses -----
@@ -323,4 +389,3 @@ export async function saveSettings(settings: any) {
   notify();
   return settingsCache;
 }
-

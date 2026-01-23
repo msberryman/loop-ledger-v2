@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import "./Insights.css";
 import { getLoops, refreshAll, subscribe } from "../lib/storage";
 
+import { PageShell, PageHeader, PillRail, Card, ContentWidth } from "../ui-kit";
+
 type RangeKey = "7d" | "14d" | "30d" | "mtd" | "ytd" | "all";
 type LoopTypeKey = "single" | "double" | "forecaddie" | "all";
 
@@ -83,55 +85,55 @@ export default function Insights() {
   const [loops, setLoops] = useState<any[]>([]);
 
   useEffect(() => {
-  setLoops(getLoops());
-
-  refreshAll()
-    .then(() => setLoops(getLoops()))
-    .catch((e) => console.error("refreshAll failed:", e));
-
-  const unsub = subscribe(() => {
     setLoops(getLoops());
-  });
 
-  return () => {
-    try {
-      unsub?.();
-    } catch {}
-  };
-}, []);
+    refreshAll()
+      .then(() => setLoops(getLoops()))
+      .catch((e) => console.error("refreshAll failed:", e));
+
+    const unsub = subscribe(() => {
+      setLoops(getLoops());
+    });
+
+    return () => {
+      try {
+        unsub?.();
+      } catch {}
+    };
+  }, []);
 
   const filteredLoops = useMemo(() => {
-  const now = new Date();
-  const todayStart = startOfDay(now);
+    const now = new Date();
+    const todayStart = startOfDay(now);
 
-  let start: Date | null = null;
+    let start: Date | null = null;
 
-  if (range === "7d") start = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
-  if (range === "14d") start = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
-  if (range === "30d") start = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
-  if (range === "mtd") start = startOfMonth(now);
-  if (range === "ytd") start = startOfYear(now);
+    if (range === "7d") start = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+    if (range === "14d") start = new Date(todayStart.getTime() - 13 * 24 * 60 * 60 * 1000);
+    if (range === "30d") start = new Date(todayStart.getTime() - 29 * 24 * 60 * 60 * 1000);
+    if (range === "mtd") start = startOfMonth(now);
+    if (range === "ytd") start = startOfYear(now);
 
-  // 1) Date filter (existing behavior)
-  const byDate = !start
-    ? loops
-    : loops.filter((l) => {
-        const d = toDate(l.date);
-        if (!d) return false;
-        return d >= startOfDay(start);
-      });
+    // 1) Date filter (existing behavior)
+    const byDate = !start
+      ? loops
+      : loops.filter((l) => {
+          const d = toDate(l.date);
+          if (!d) return false;
+          return d >= startOfDay(start);
+        });
 
-  // 2) Loop-type filter (NEW)
-  if (loopType === "all") return byDate;
+    // 2) Loop-type filter (existing behavior)
+    if (loopType === "all") return byDate;
 
-  return byDate.filter((l: any) => {
-    const t = String(l.loopType || l.loop_type || "").toLowerCase();
-    if (loopType === "single") return t.includes("single");
-    if (loopType === "double") return t.includes("double");
-    if (loopType === "forecaddie") return t.includes("fore");
-    return true;
-  });
-}, [loops, range, loopType]);
+    return byDate.filter((l: any) => {
+      const t = String(l.loopType || l.loop_type || "").toLowerCase();
+      if (loopType === "single") return t.includes("single");
+      if (loopType === "double") return t.includes("double");
+      if (loopType === "forecaddie") return t.includes("fore");
+      return true;
+    });
+  }, [loops, range, loopType]);
 
   const totals = useMemo(() => {
     let bagFees = 0;
@@ -156,11 +158,7 @@ export default function Insights() {
     // Avg $/loop
     const avgEarningsPerLoop = totalLoops > 0 ? totalIncome / totalLoops : 0;
 
-    // Time-based metrics:
-    // On-bag hours: End - Tee
-    // Overall hours: End - Report
-    // Wait: Tee - Report
-    // Pace: End - Tee  (avg per loop)
+    // Time-based metrics
     let onBagMinutesSum = 0;
     let onBagCount = 0;
 
@@ -223,127 +221,82 @@ export default function Insights() {
     };
   }, [filteredLoops]);
 
-  const maxWrapStyle: React.CSSProperties = {
-    width: "min(720px, calc(100% - 0px))",
-    margin: "0 auto",
-  };
-
-  const cardStyle: React.CSSProperties = {
-    borderRadius: 14,
-    border: "1px solid rgba(255,255,255,0.08)",
-    background: "rgba(255,255,255,0.04)",
-    boxShadow: "0 10px 30px rgba(0,0,0,0.35)",
-  };
-
-  const kpiGridStyle: React.CSSProperties = {
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: 12,
-  };
-
-  const kpiCardStyle: React.CSSProperties = {
-    ...cardStyle,
-    padding: 14,
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: 11,
-    letterSpacing: "0.16em",
-    textTransform: "uppercase",
-    opacity: 0.75,
-  };
-
-  const valueStyle: React.CSSProperties = {
-    fontSize: 22,
-    fontWeight: 800,
-    marginTop: 8,
-  };
+  const kpis = [
+    { label: "AVG EARNINGS / LOOP", value: moneyFmt.format(totals.avgEarningsPerLoop) },
+    { label: "TIPS % OF INCOME", value: `${Math.round(totals.tipsPct)}%` },
+    {
+      label: "OVERALL $ / HOUR",
+      value: (
+        <>
+          {moneyFmt.format(totals.overallPerHour)}
+          <span style={{ fontSize: 16, fontWeight: 800, opacity: 0.9 }}>/hr</span>
+        </>
+      ),
+    },
+    {
+      label: "ON-BAG $ / HOUR",
+      value: (
+        <>
+          {moneyFmt.format(totals.onBagPerHour)}
+          <span style={{ fontSize: 16, fontWeight: 800, opacity: 0.9 }}>/hr</span>
+        </>
+      ),
+    },
+    { label: "AVG PACE OF PLAY", value: fmtDuration(totals.avgPaceMins) },
+    { label: "AVG WAIT TIME", value: fmtDuration(totals.avgWaitMins) },
+  ] as const;
 
   return (
-    <div className="insights-page" style={{ padding: "18px 16px 28px", boxSizing: "border-box" }}>
-      <div className="insights-header">
-  <h1 className="insights-title">Insights</h1>
+    <PageShell>
+      <ContentWidth>
+        <PageHeader
+          title="Insights"
+          right={
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+              <PillRail<RangeKey>
+                ariaLabel="Insights date range filter"
+                options={rangeOptions}
+                value={range}
+                onChange={setRange}
+              />
+              <PillRail<LoopTypeKey>
+                ariaLabel="Insights loop type filter"
+                options={loopTypeOptions}
+                value={loopType}
+                onChange={setLoopType}
+              />
+            </div>
+          }
+        />
+      </ContentWidth>
 
-  <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
-    {/* Date filter row */}
-    <div className="insights-filters">
-      {rangeOptions.map((r) => (
-        <button
-          key={r.key}
-          className={`insights-filter-pill ${range === r.key ? "active" : ""}`}
-          onClick={() => setRange(r.key)}
-          type="button"
-        >
-          {r.label}
-        </button>
-      ))}
-    </div>
-
-    {/* Loop type filter row */}
-    <div className="insights-filters">
-      {loopTypeOptions.map((t) => (
-        <button
-          key={t.key}
-          className={`insights-filter-pill ${loopType === t.key ? "active" : ""}`}
-          onClick={() => setLoopType(t.key)}
-          type="button"
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  </div>
-</div>
-
-      <div style={maxWrapStyle}>
-        {/* TOTAL INCOME (was Range Summary) */}
-        <div style={{ ...cardStyle, padding: 18, marginBottom: 12 }}>
-          <div style={labelStyle}>TOTAL INCOME</div>
+      <ContentWidth style={{ marginTop: 14 }}>
+        <Card>
+          <div style={{ fontSize: 12, letterSpacing: 1.4, opacity: 0.7 }}>TOTAL INCOME</div>
           <div style={{ fontSize: 34, fontWeight: 900, marginTop: 10 }}>
             {moneyFmt.format(totals.totalIncome)}
           </div>
           <div style={{ marginTop: 6, opacity: 0.8 }}>{totals.totalLoops} loops</div>
-        </div>
+        </Card>
+      </ContentWidth>
 
-        {/* KPI GRID (no descriptions under metrics) */}
-        <div style={kpiGridStyle}>
-          <div style={kpiCardStyle}>
-            <div style={labelStyle}>AVG EARNINGS / LOOP</div>
-            <div style={valueStyle}>{moneyFmt.format(totals.avgEarningsPerLoop)}</div>
-          </div>
-
-	<div style={kpiCardStyle}>
-            <div style={labelStyle}>TIPS % OF INCOME</div>
-            <div style={valueStyle}>{Math.round(totals.tipsPct)}%</div>
-          </div>
-
-	<div style={kpiCardStyle}>
-            <div style={labelStyle}>OVERALL $ / HOUR</div>
-            <div style={valueStyle}>
-              {moneyFmt.format(totals.overallPerHour)}
-              <span style={{ fontSize: 16, fontWeight: 800, opacity: 0.9 }}>/hr</span>
+      <ContentWidth
+        style={{
+          marginTop: 12,
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 12,
+        }}
+      >
+        {kpis.map((k) => (
+          <Card key={k.label} variant="inner">
+            <div style={{ fontSize: 11, letterSpacing: "0.16em", textTransform: "uppercase", opacity: 0.75 }}>
+              {k.label}
             </div>
-          </div>
-
-          <div style={kpiCardStyle}>
-            <div style={labelStyle}>ON-BAG $ / HOUR</div>
-            <div style={valueStyle}>
-              {moneyFmt.format(totals.onBagPerHour)}
-              <span style={{ fontSize: 16, fontWeight: 800, opacity: 0.9 }}>/hr</span>
-            </div>
-          </div>
-	
-	<div style={kpiCardStyle}>
-            <div style={labelStyle}>AVG PACE OF PLAY</div>
-            <div style={valueStyle}>{fmtDuration(totals.avgPaceMins)}</div>
-          </div>
-
-          <div style={kpiCardStyle}>
-            <div style={labelStyle}>AVG WAIT TIME</div>
-            <div style={valueStyle}>{fmtDuration(totals.avgWaitMins)}</div>
-          </div>
-        </div>
-      </div>
-    </div>
+            <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>{k.value}</div>
+          </Card>
+        ))}
+      </ContentWidth>
+    </PageShell>
   );
 }

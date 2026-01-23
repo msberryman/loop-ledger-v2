@@ -1,5 +1,5 @@
 // src/AppShell.tsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Layout } from "./ui/Layout";
 
@@ -11,14 +11,50 @@ import InsightsPage from "./pages/Insights";
 import SettingsPage from "./pages/Settings";
 import Login from "./pages/Login";
 import ProtectedRoute from "./routes/ProtectedRoute";
-import BottomNav from "./components/BottomNav"; // <-- NEW
+import BottomNav from "./components/BottomNav";
+
+function useIsMobile(breakpointPx = 900) {
+  const query = `(max-width: ${breakpointPx - 1}px)`;
+
+  const getMql = () => {
+    if (typeof window === "undefined") return null;
+    if (typeof window.matchMedia !== "function") return null; // ✅ vitest/jsdom safe
+    return window.matchMedia(query);
+  };
+
+  const [isMobile, setIsMobile] = useState(() => {
+    const mql = getMql();
+    return mql ? mql.matches : false;
+  });
+
+  useEffect(() => {
+    const mql = getMql();
+    if (!mql) return; // ✅ no-op in tests
+
+    const onChange = () => setIsMobile(mql.matches);
+
+    // Set once on mount
+    onChange();
+
+    if (mql.addEventListener) mql.addEventListener("change", onChange);
+    else mql.addListener(onChange);
+
+    return () => {
+      if (mql.removeEventListener) mql.removeEventListener("change", onChange);
+      else mql.removeListener(onChange);
+    };
+  }, [breakpointPx]);
+
+  return isMobile;
+}
+
 
 export default function AppShell() {
   const location = useLocation();
 
   // Show login without layout chrome
   const isLogin = location.pathname === "/login";
-  const isMobile = window.innerWidth < 900; // <-- NEW
+  const isMobile = useIsMobile(900);
 
   const routeElements = (
     <Routes>
@@ -95,7 +131,7 @@ export default function AppShell() {
       <Layout>
         <div
           style={{
-            paddingBottom: isMobile ? "60px" : "0px", // <-- Space for bottom nav
+            paddingBottom: isMobile ? "60px" : "0px", // Space for bottom nav
           }}
         >
           {routeElements}
@@ -103,8 +139,7 @@ export default function AppShell() {
       </Layout>
 
       {/* MOBILE-ONLY BOTTOM NAV */}
-      {isMobile && <BottomNav />} {/* <-- NEW */}
+      {isMobile && <BottomNav />}
     </>
   );
 }
-

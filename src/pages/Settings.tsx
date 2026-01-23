@@ -3,8 +3,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { getSettings, refreshAll, saveSettings } from "../lib/storage";
-import { Card } from "../ui/card";
-import { Button } from "../ui/Button";
+
+import { PageShell, PageHeader, ContentWidth, Card, Button } from "../ui-kit";
 
 /**
  * Settings
@@ -14,6 +14,7 @@ import { Button } from "../ui/Button";
 
 // --- Google Places loader + autocomplete (for home address) ---
 let placesLoading: Promise<void> | null = null;
+
 function ensurePlacesLoaded(): Promise<void> {
   if ((window as any).google?.maps?.places?.Autocomplete) return Promise.resolve();
   if (placesLoading) return placesLoading;
@@ -57,8 +58,7 @@ function usePlacesAutocomplete(
 
       listener = ac.addListener("place_changed", () => {
         const place = ac.getPlace?.();
-        const addr =
-          place?.formatted_address || (el as HTMLInputElement).value || "";
+        const addr = place?.formatted_address || (el as HTMLInputElement).value || "";
         onPick(addr, place?.place_id);
       });
     });
@@ -70,85 +70,103 @@ function usePlacesAutocomplete(
   }, [inputRef, onPick]);
 }
 
+/** UI-only helpers for currency display in input fields */
+function formatCurrencyInput(rawNumeric: string): string {
+  if (!rawNumeric) return "";
+  return `$${rawNumeric}`;
+}
+
+function stripToNumeric(val: string): string {
+  // allow digits + one dot
+  const cleaned = val.replace(/[^0-9.]/g, "");
+  const parts = cleaned.split(".");
+  if (parts.length <= 1) return cleaned;
+  return `${parts[0]}.${parts.slice(1).join("")}`;
+}
+
 export default function Settings() {
   const navigate = useNavigate();
+
   const [address, setAddress] = useState("");
   const [placeId, setPlaceId] = useState<string | null>(null);
+
+  // Keep as-is (even if not shown in UI right now)
   const [mileageRate, setMileageRate] = useState("0.67");
+
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [addressError, setAddressError] = useState<string | null>(null);
+
   const [defaultBagFeeSingle, setDefaultBagFeeSingle] = useState("");
   const [defaultBagFeeDouble, setDefaultBagFeeDouble] = useState("");
   const [defaultBagFeeForecaddie, setDefaultBagFeeForecaddie] = useState("");
 
+  // Load settings from Supabase (via storage cache)
+  useEffect(() => {
+    let cancelled = false;
 
-// Load settings from Supabase (via storage cache)
-useEffect(() => {
-  let cancelled = false;
+    (async () => {
+      try {
+        await refreshAll(); // pulls ll_user_settings into cache
+        const s = getSettings();
+        if (cancelled) return;
 
-  (async () => {
-    try {
-      await refreshAll(); // pulls ll_user_settings into cache
-      const s = getSettings();
+        setAddress(s?.homeAddress || "");
+        setPlaceId(s?.homePlaceId || null);
+        setMileageRate(String(s?.mileageRate ?? "0.67"));
 
-      if (cancelled) return;
+        setDefaultBagFeeSingle(s?.defaultBagFeeSingle != null ? String(s.defaultBagFeeSingle) : "");
+        setDefaultBagFeeDouble(s?.defaultBagFeeDouble != null ? String(s.defaultBagFeeDouble) : "");
+        setDefaultBagFeeForecaddie(
+          s?.defaultBagFeeForecaddie != null ? String(s.defaultBagFeeForecaddie) : ""
+        );
+      } catch (err) {
+        console.error("Failed to load settings:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
 
-      setAddress(s?.homeAddress || "");
-      setPlaceId(s?.homePlaceId || null);
-      setMileageRate(String(s?.mileageRate ?? "0.67"));
-      setDefaultBagFeeSingle(s?.defaultBagFeeSingle != null ? String(s.defaultBagFeeSingle) : "");
-      setDefaultBagFeeDouble(s?.defaultBagFeeDouble != null ? String(s.defaultBagFeeDouble) : "");
-      setDefaultBagFeeForecaddie(s?.defaultBagFeeForecaddie != null ? String(s.defaultBagFeeForecaddie) : "");
-    } catch (err) {
-      console.error("Failed to load settings:", err);
-    } finally {
-      if (!cancelled) setLoading(false);
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, []);
-
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Wire up autocomplete to update address + placeId
   usePlacesAutocomplete(inputRef, (text, pid) => {
-  setAddress(text);
-  setPlaceId(pid ?? null);
-  setAddressError(null);
-});
+    setAddress(text);
+    setPlaceId(pid ?? null);
+    setAddressError(null);
+  });
 
   async function handleSave() {
-  if (!address || !placeId) {
-    setAddressError(
-      "Please select a full address from the suggestions list."
-    );
-    return;
-  }
+    if (!address || !placeId) {
+      setAddressError("Please select a full address from the suggestions list.");
+      return;
+    }
 
-  setSaving(true);
-  try {
-    await saveSettings({
-      homeAddress: address,
-      homePlaceId: placeId,
-      mileageRate: mileageRate,
-      defaultBagFeeSingle: defaultBagFeeSingle === "" ? null : Number(defaultBagFeeSingle),
-      defaultBagFeeDouble: defaultBagFeeDouble === "" ? null : Number(defaultBagFeeDouble),
-      defaultBagFeeForecaddie: defaultBagFeeForecaddie === "" ? null : Number(defaultBagFeeForecaddie),
-    });
+    setSaving(true);
+    try {
+      await saveSettings({
+        homeAddress: address,
+        homePlaceId: placeId,
+        mileageRate: mileageRate,
+        defaultBagFeeSingle: defaultBagFeeSingle === "" ? null : Number(defaultBagFeeSingle),
+        defaultBagFeeDouble: defaultBagFeeDouble === "" ? null : Number(defaultBagFeeDouble),
+        defaultBagFeeForecaddie: defaultBagFeeForecaddie === "" ? null : Number(defaultBagFeeForecaddie),
+      });
 
-    await refreshAll();
-    navigate("/home", { replace: true });
-  } catch (err) {
-    console.error("Save settings failed:", err);
-    alert("Failed to save settings. Please try again.");
-  } finally {
-    setSaving(false);
+      await refreshAll();
+      navigate("/home", { replace: true });
+    } catch (err) {
+      console.error("Save settings failed:", err);
+      alert("Failed to save settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   }
-}
 
   async function handleLogout() {
     try {
@@ -156,61 +174,68 @@ useEffect(() => {
     } catch (err) {
       console.error("Sign out failed", err);
     } finally {
-  navigate("/login", { replace: true });
-}
+      navigate("/login", { replace: true });
+    }
   }
 
+  // Shared input style to match the calm, premium “soft field” vibe
+  const inputStyle: React.CSSProperties = {
+    display: "block",
+    width: "100%",
+    boxSizing: "border-box", // ✅ fixes "wider than card" issue
+    padding: "12px 14px",
+    borderRadius: 12,
+    border: "1px solid rgba(255,255,255,0.14)",
+    background: "rgba(255,255,255,0.04)",
+    color: "inherit",
+    outline: "none",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 12,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    opacity: 0.75,
+  };
+
   return (
-    <div style={{ padding: 24 }}>
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: 24,
-        }}
-      >
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 4 }}>
-            Settings
-          </h1>
-          <p style={{ margin: 0, opacity: 0.7, fontSize: 14 }}>
-            Tune mileage and account details for your ledger.
-          </p>
-        </div>
+    <PageShell>
+      <ContentWidth>
+        <PageHeader
+          title="Settings"
+          subtitle="Tune mileage and account details for your ledger."
+          right={
+            <div style={{ alignSelf: "flex-start" }}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleLogout}
+                style={{
+                  background: "transparent",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  padding: "10px 14px",
+                  marginTop: 6, // ✅ prevents the “floating” feel on mobile stack
+                }}
+              >
+                Log Out
+              </Button>
+            </div>
+          }
+        />
+      </ContentWidth>
 
-        {/* Account actions */}
-        <Button variant="ghost" onClick={handleLogout}>
-          Log Out
-        </Button>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gap: 16,
-          maxWidth: 640,
-        }}
-      >
+      <ContentWidth style={{ marginTop: 14 }}>
         <Card>
-          <div
-            style={{
-              padding: 20,
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {/* Home address section */}
             <div>
-              <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
-                Home address
-              </div>
+              <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 4 }}>Home Address</div>
               <div style={{ fontSize: 13, opacity: 0.7 }}>
                 Used to calculate round-trip mileage for each loop.
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               <input
                 ref={inputRef}
                 type="text"
@@ -218,101 +243,70 @@ useEffect(() => {
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="Start typing and pick from suggestions…"
                 disabled={loading}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #232931",
-                  background: "transparent",
-                  color: "inherit",
-                  outline: "none",
-                }}
+                style={inputStyle}
               />
 
-{addressError && (
-  <div style={{ color: "#ff6b6b", fontSize: 13 }}>
-    {addressError}
-  </div>
-)}
+              {addressError && (
+                <div style={{ color: "#ff6b6b", fontSize: 13 }}>{addressError}</div>
+              )}
+            </div>
 
-<div style={{ display: "grid", gap: 10, marginTop: 10 }}>
-  <div style={{ fontSize: 14, fontWeight: 600 }}>Default bag fees</div>
+            {/* Divider */}
+            <div style={{ height: 1, background: "rgba(255,255,255,0.10)" }} />
 
-  <div style={{ display: "grid", gap: 6 }}>
-    <label style={{ fontSize: 12, opacity: 0.8 }}>Single Bag</label>
-    <input
-      type="text"
-      inputMode="decimal"
-      value={defaultBagFeeSingle}
-      onChange={(e) => setDefaultBagFeeSingle(e.target.value.replace(/[^\d.]/g, ""))}
-      placeholder="e.g., $60"
-      disabled={loading}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid #232931",
-        background: "transparent",
-        color: "inherit",
-        outline: "none",
-      }}
-    />
-  </div>
+            {/* Default bag fees section */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <div style={{ fontSize: 16, fontWeight: 800 }}>Default Bag Fees</div>
+              <div style={{ fontSize: 13, opacity: 0.7 }}>
+                Leave blank if you don’t want a default.
+              </div>
 
-  <div style={{ display: "grid", gap: 6 }}>
-    <label style={{ fontSize: 12, opacity: 0.8 }}>Double Bag</label>
-    <input
-      type="text"
-      inputMode="decimal"
-      value={defaultBagFeeDouble}
-      onChange={(e) => setDefaultBagFeeDouble(e.target.value.replace(/[^\d.]/g, ""))}
-      placeholder="e.g., $80"
-      disabled={loading}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid #232931",
-        background: "transparent",
-        color: "inherit",
-        outline: "none",
-      }}
-    />
-  </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 12, marginTop: 6 }}>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={labelStyle}>Single Bag</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatCurrencyInput(defaultBagFeeSingle)}
+                    onChange={(e) => setDefaultBagFeeSingle(stripToNumeric(e.target.value))}
+                    placeholder="e.g., $60"
+                    disabled={loading}
+                    style={inputStyle}
+                  />
+                </div>
 
-  <div style={{ display: "grid", gap: 6 }}>
-    <label style={{ fontSize: 12, opacity: 0.8 }}>Forecaddie</label>
-    <input
-      type="text"
-      inputMode="decimal"
-      value={defaultBagFeeForecaddie}
-      onChange={(e) => setDefaultBagFeeForecaddie(e.target.value.replace(/[^\d.]/g, ""))}
-      placeholder="e.g., $40"
-      disabled={loading}
-      style={{
-        display: "block",
-        width: "100%",
-        padding: "10px 12px",
-        borderRadius: 10,
-        border: "1px solid #232931",
-        background: "transparent",
-        color: "inherit",
-        outline: "none",
-      }}
-    />
-  </div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={labelStyle}>Double Bag</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatCurrencyInput(defaultBagFeeDouble)}
+                    onChange={(e) => setDefaultBagFeeDouble(stripToNumeric(e.target.value))}
+                    placeholder="e.g., $80"
+                    disabled={loading}
+                    style={inputStyle}
+                  />
+                </div>
 
-  <div style={{ fontSize: 12, opacity: 0.7 }}>
-    Leave blank if you don’t want a default.
-  </div>
-</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={labelStyle}>Forecaddie</div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={formatCurrencyInput(defaultBagFeeForecaddie)}
+                    onChange={(e) => setDefaultBagFeeForecaddie(stripToNumeric(e.target.value))}
+                    placeholder="e.g., $40"
+                    disabled={loading}
+                    style={inputStyle}
+                  />
+                </div>
+              </div>
 
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              {/* Save button */}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 6 }}>
                 <Button
                   type="button"
+                  variant="primary"
                   onClick={handleSave}
                   disabled={saving || loading}
                 >
@@ -322,9 +316,7 @@ useEffect(() => {
             </div>
           </div>
         </Card>
-      </div>
-    </div>
+      </ContentWidth>
+    </PageShell>
   );
 }
-
-
