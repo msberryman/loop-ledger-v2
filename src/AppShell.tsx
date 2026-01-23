@@ -14,15 +14,26 @@ import ProtectedRoute from "./routes/ProtectedRoute";
 import BottomNav from "./components/BottomNav";
 
 function useIsMobile(breakpointPx = 900) {
+  const query = `(max-width: ${breakpointPx - 1}px)`;
+
+  const getMql = () => {
+    if (typeof window === "undefined") return null;
+    if (typeof window.matchMedia !== "function") return null; // ✅ vitest/jsdom safe
+    return window.matchMedia(query);
+  };
+
   const [isMobile, setIsMobile] = useState(() => {
-    if (typeof window === "undefined") return false;
-    return window.matchMedia(`(max-width: ${breakpointPx - 1}px)`).matches;
+    const mql = getMql();
+    return mql ? mql.matches : false;
   });
 
   useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${breakpointPx - 1}px)`);
+    const mql = getMql();
+    if (!mql) return; // ✅ no-op in tests
+
     const onChange = () => setIsMobile(mql.matches);
 
+    // Set once on mount
     onChange();
 
     if (mql.addEventListener) mql.addEventListener("change", onChange);
@@ -36,6 +47,7 @@ function useIsMobile(breakpointPx = 900) {
 
   return isMobile;
 }
+
 
 export default function AppShell() {
   const location = useLocation();
